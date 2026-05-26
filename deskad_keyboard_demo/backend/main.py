@@ -52,6 +52,50 @@ class KeyboardRenderRequest(BaseModel):
     desk_color: str = Field(default="#d8b892")
     mouse_color: str = Field(default="#f7f7f2")
     theme: str = Field(default="minimal")
+    case_finish: str = Field(default="anodized", pattern=r"^(anodized|matte|polycarbonate|wood)$")
+    plate_material: str = Field(default="aluminum", pattern=r"^(aluminum|brass|pom|fr4|carbon|polycarbonate)$")
+    pcb_color: str = Field(default="black", pattern=r"^(black|red|blue|green|white)$")
+    switch_stem: str = Field(default="red", pattern=r"^(red|yellow|brown|blue|clear|silent_red|tactile_purple|linear_black)$")
+    show_internals: bool = Field(default=True)
+
+
+class DeskSetupRenderRequest(KeyboardRenderRequest):
+    assets: list[str] = Field(default_factory=enabled_asset_ids)
+    desk_width: float = Field(default=120.0, ge=100.0, le=200.0)
+    desk_depth: float = Field(default=60.0, ge=50.0, le=90.0)
+    monitor_size: str = Field(default="27", pattern=r"^(24|27|32)$")
+    monitor_arm_style: str = Field(default="single", pattern=r"^(single|double_joint)$")
+    show_internals: bool = Field(default=False)
+
+
+class AdContentRequest(DeskSetupRenderRequest):
+    product_name: str = Field(default="크림 베이지 65% 커스텀 키보드")
+    product_type: str = Field(default="커스텀 키보드")
+    price: str = Field(default="189,000원")
+    target_channel: str = Field(default="인스타그램")
+    target_customer: str = Field(default="깔끔한 데스크 셋업을 원하는 직장인")
+    selling_point: str = Field(default="조용한 타건감, 크림 톤 키캡, 작은 책상에도 잘 맞는 65% 배열")
+    ad_tone: str = Field(default="감성형")
+    image_ratio: str = Field(default="1:1")
+    extra_request: str = Field(default="깔끔하고 고급스러운 데스크셋업 광고 느낌")
+    model_url: str | None = Field(default=None)
+    poster_template: str = Field(default="minimal_card", pattern=r"^(minimal_card|grid_three|feature_focus|promo_banner)$")
+
+
+class UploadedModelRequest(BaseModel):
+    filename: str
+    content_base64: str
+
+
+def _settings_base_url() -> str:
+    return get_settings().public_api_base_url.rstrip("/")
+
+
+def _layout_path(layout: str) -> Path:
+    path = DATA_DIR / "layouts" / f"layout_{layout}.json"
+    if not path.exists():
+        return DATA_DIR / "layouts" / "layout_65.json"
+    return path
 
 
 class DeskSetupRenderRequest(KeyboardRenderRequest):
@@ -127,7 +171,7 @@ def model_viewer(model_url: str, camera: str = "perspective"):
     <html>
       <head>
         <meta charset="utf-8" />
-        <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+        <script type="module" src="https://unpkg.com/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
         <style>
           html, body {{
             margin: 0;
@@ -138,7 +182,7 @@ def model_viewer(model_url: str, camera: str = "perspective"):
           model-viewer {{
             width: 100%;
             height: 100vh;
-            background: linear-gradient(180deg, #f7f4ee 0%, #e9edf0 100%);
+            background: radial-gradient(ellipse at center top, #f9f6f0 0%, #e7ecf1 60%, #dfe4eb 100%);
           }}
         </style>
       </head>
@@ -147,6 +191,16 @@ def model_viewer(model_url: str, camera: str = "perspective"):
           src="{escape(model_url)}"
           camera-controls
           auto-rotate
+          auto-rotate-delay="6000"
+          environment-image="neutral"
+          tone-mapping="aces"
+          shadow-intensity="1.4"
+          shadow-softness="0.85"
+          exposure="1.05"
+          camera-orbit="{orbit}"
+          min-camera-orbit="auto auto 70m"
+          max-camera-orbit="auto auto 260m"
+          interaction-prompt="none">
           shadow-intensity="0.8"
           exposure="0.72"
           camera-orbit="{orbit}"
@@ -172,6 +226,11 @@ def render_keyboard_preview(request: KeyboardRenderRequest):
         deskmat_color=request.deskmat_color,
         desk_color=request.desk_color,
         mouse_color=request.mouse_color,
+        case_finish=request.case_finish,
+        plate_material=request.plate_material,
+        pcb_color=request.pcb_color,
+        switch_stem=request.switch_stem,
+        show_internals=request.show_internals,
     )
 
     return {
@@ -201,6 +260,12 @@ def render_desk_setup(request: DeskSetupRenderRequest):
         desk_width=request.desk_width,
         desk_depth=request.desk_depth,
         monitor_size=request.monitor_size,
+        case_finish=request.case_finish,
+        plate_material=request.plate_material,
+        pcb_color=request.pcb_color,
+        switch_stem=request.switch_stem,
+        show_internals=request.show_internals,
+        monitor_arm_style=request.monitor_arm_style,
     )
 
     return {
@@ -238,6 +303,20 @@ def generate_poster(request: AdContentRequest):
     payload = request.model_dump()
     copy_result = generate_ad_copy(payload)
     image_prompt = build_image_prompt(payload, copy_result)
+    image_reference = generate_local_image_reference(payload, image_prompt)
+    image_b64 = None
+    if isinstance(image_reference, dict) and image_reference.get("has_image"):
+        image_b64 = image_reference.get("image_b64")
+    poster_meta = save_poster_svg(
+        payload=payload,
+        copy_result=copy_result,
+        poster_dir=POSTER_DIR,
+        image_b64=image_b64,
+    )
+
+    safe_reference = None
+    if isinstance(image_reference, dict):
+        safe_reference = {k: v for k, v in image_reference.items() if k != "image_b64"}
     poster_meta = save_poster_svg(payload=payload, copy_result=copy_result, poster_dir=POSTER_DIR)
     image_reference = generate_local_image_reference(payload, image_prompt)
 
@@ -246,5 +325,8 @@ def generate_poster(request: AdContentRequest):
         "image_prompt": image_prompt,
         "poster_url": f"{_settings_base_url()}/static/posters/{poster_meta['poster_file']}",
         "poster_file": poster_meta["poster_file"],
+        "poster_template": payload.get("poster_template", "minimal_card"),
+        "local_image_reference": safe_reference,
+        "image_embedded": bool(image_b64),
         "local_image_reference": image_reference,
     }
