@@ -1,10 +1,33 @@
-from urllib.parse import quote
+
+from __future__ import annotations
+
+import base64
+import os
+from pathlib import Path
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 
-API_BASE = "http://127.0.0.1:8000"
+APP_DIR = Path(__file__).resolve().parent
+
+
+def load_env_file(path: Path) -> None:
+    """Streamlit 실행 전에 .env 값을 환경 변수로 로드한다."""
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+load_env_file(APP_DIR / ".env")
+API_BASE = os.getenv("DESKAD_API_BASE", "http://127.0.0.1:8000").rstrip("/")
+PUBLIC_API_BASE = os.getenv("DESKAD_PUBLIC_API_BASE", API_BASE).rstrip("/")
 
 
 st.set_page_config(
@@ -34,44 +57,12 @@ st.markdown(
         width: 300px !important;
       }
 
-      .app-shell {
-        display: flex;
-        gap: 24px;
-        align-items: flex-start;
-      }
-
       .section-label {
         font-size: 12px;
         line-height: 1;
         letter-spacing: 0;
         color: #6b7280;
         margin-bottom: 6px;
-      }
-
-      .panel-title {
-        font-size: 18px;
-        font-weight: 700;
-        margin: 0 0 12px 0;
-      }
-
-      .input-card {
-        width: 620px;
-        height: 500px;
-        overflow-y: auto;
-        border: 1px solid rgba(148, 163, 184, 0.28);
-        border-radius: 8px;
-        padding: 14px 14px 6px 14px;
-        background: rgba(255, 255, 255, 0.04);
-      }
-
-      .result-frame {
-        width: 100%;
-        max-width: 1000px;
-        min-height: 1000px;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        border-radius: 8px;
-        padding: 14px;
-        background: rgba(255, 255, 255, 0.035);
       }
 
       .metric-chip {
@@ -82,12 +73,8 @@ st.markdown(
         border: 1px solid rgba(148, 163, 184, 0.28);
         border-radius: 999px;
         font-size: 12px;
-        color: #94a3b8;
+        color: #64748b;
         margin-right: 6px;
-      }
-
-      div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 8px;
       }
 
       iframe {
@@ -119,13 +106,93 @@ DEFAULTS = {
     "deskmat_color": "#1f2937",
     "desk_color": "#d8b892",
     "mouse_color": "#f7f7f2",
+    "case_finish": "anodized",
+    "plate_material": "aluminum",
+    "pcb_color": "black",
+    "switch_stem": "red",
+    "show_internals": False,
+    "monitor_arm_style": "single",
+    "desk_preset": "120 x 60 cm",
+    "desk_width": 120.0,
+    "desk_depth": 60.0,
+    "monitor_size": "27",
+    "asset_selection": ["mouse", "monitor", "monitor_arm", "desk_lamp", "plant"],
+    "camera": "perspective",
     "model_url": None,
     "model_meta": None,
+    "uploaded_model_url": None,
+    "uploaded_model_meta": None,
     "copy_result": None,
+    "poster_result": None,
+    "ad_tone": "감성형",
+    "image_ratio": "1:1",
+    "extra_request": "깔끔하고 고급스러운 데스크셋업 광고 느낌",
+    "poster_template": "minimal_card",
+}
+
+CASE_FINISH_LABELS = {
+    "anodized": "아노다이징 알루미늄 (반광택)",
+    "matte": "무광 페인트",
+    "polycarbonate": "폴리카보네이트 (반투명톤)",
+    "wood": "원목 마감",
+}
+
+PLATE_MATERIAL_LABELS = {
+    "aluminum": "알루미늄 (단단·청량한 타건)",
+    "brass": "황동 (묵직·차분)",
+    "pom": "POM (탄성·부드러움)",
+    "fr4": "FR4 글래스 (밸런스)",
+    "carbon": "카본 (가벼움·드라이)",
+    "polycarbonate": "폴리카보네이트 (탄성·부드러움)",
+}
+
+PCB_COLOR_LABELS = {
+    "black": "블랙 PCB",
+    "red": "레드 PCB",
+    "blue": "블루 PCB",
+    "green": "그린 PCB",
+    "white": "화이트 PCB",
+}
+
+SWITCH_STEM_LABELS = {
+    "red": "Red (Linear, 가벼움)",
+    "yellow": "Yellow (Linear, 부드러움)",
+    "brown": "Brown (Tactile, 사무용)",
+    "blue": "Blue (Clicky, 또렷)",
+    "clear": "Clear (Heavy Tactile)",
+    "silent_red": "Silent Red (정음)",
+    "tactile_purple": "Holy Panda 계열 (Tactile)",
+    "linear_black": "Black (Linear, 무거움)",
+}
+
+MONITOR_ARM_LABELS = {
+    "single": "싱글 암 (직선)",
+    "double_joint": "더블 조인트 (꺾임)",
+}
+
+POSTER_TEMPLATE_LABELS = {
+    "minimal_card": "Minimal Card (제품 강조)",
+    "grid_three": "Grid 3컷 (라이프스타일)",
+    "feature_focus": "Feature Focus (스펙 강조)",
+    "promo_banner": "Promo Banner (할인/광고)",
+}
+
+MONITOR_SIZES = {
+    "24": "24인치 (56 × 33 cm)",
+    "27": "27인치 (62 × 36 cm)",
+    "32": "32인치 (74 × 43 cm)",
+}
+
+KEYBOARD_SIZE_INFO = {
+    "60": "60% (약 28.6 × 9.5 cm, 61키)",
+    "65": "65% (약 30.5 × 9.5 cm, 67키)",
+    "75": "75% (약 30.5 × 11.4 cm, 84키)",
+    "87": "87키 TKL (약 34.3 × 11.4 cm)",
+    "104": "104키 풀배열 (약 44.8 × 11.4 cm)",
 }
 
 for key, value in DEFAULTS.items():
-    st.session_state.setdefault(key, value)
+    st.session_state.setdefault(key, value.copy() if isinstance(value, list) else value)
 
 if st.session_state.step_selector != st.session_state.step:
     st.session_state.step_selector = st.session_state.step
@@ -148,25 +215,166 @@ KEYBOARD_MODEL_DEFAULTS = {
         "layout": "75",
         "description": "상세페이지용 제품 시뮬레이션에 적합한 75% 샘플",
     },
+    "HHKB Style 60": {
+        "layout": "60",
+        "description": "60% 배열, 화살표 클러스터 없는 클래식 미니멀 키보드",
+    },
+    "TKL Reference 87": {
+        "layout": "87",
+        "description": "87키 TKL 대표 도면. F-row, navigation cluster, arrow cluster가 포함된 범용 프리셋",
+    },
+    "Full Size Reference 104": {
+        "layout": "104",
+        "description": "104키 ANSI 풀배열 대표 도면. 텐키까지 포함한 사무용/풀사이즈 프리셋",
+    },
 }
 
 
+FALLBACK_ASSETS = [
+    {"id": "mouse", "label": "무선 마우스", "category": "input"},
+    {"id": "monitor", "label": "모니터", "category": "display"},
+    {"id": "monitor_arm", "label": "VESA 모니터암", "category": "display"},
+    {"id": "monitor_light_bar", "label": "모니터 라이트 바", "category": "lighting"},
+    {"id": "desk_lamp", "label": "데스크 조명", "category": "lighting"},
+    {"id": "plant", "label": "미니 화분", "category": "decor"},
+    {"id": "speakers", "label": "북쉘프 스피커", "category": "audio"},
+    {"id": "desk_shelf", "label": "모니터 받침대", "category": "furniture"},
+    {"id": "notebook", "label": "노트/플래너", "category": "stationery"},
+    {"id": "headphone_stand", "label": "헤드폰 스탠드", "category": "audio"},
+    {"id": "phone_stand", "label": "스마트폰 스탠드", "category": "accessory"},
+    {"id": "keycap_tray", "label": "키캡 진열 트레이", "category": "keyboard"},
+    {"id": "coffee_mug", "label": "머그컵", "category": "decor"},
+    {"id": "digital_clock", "label": "디지털 시계", "category": "decor"},
+    {"id": "aroma_diffuser", "label": "아로마 디퓨저", "category": "decor"},
+    {"id": "wireless_charger", "label": "무선 충전 패드", "category": "accessory"},
+    {"id": "pen_holder", "label": "펜 홀더", "category": "stationery"},
+    {"id": "book_stack", "label": "책 묶음", "category": "decor"},
+    {"id": "humidifier", "label": "가습기", "category": "decor"},
+    {"id": "photo_frame", "label": "사진 액자", "category": "decor"},
+    {"id": "usb_hub", "label": "USB 허브", "category": "accessory"},
+    {"id": "mouse_pad_round", "label": "라운드 마우스패드", "category": "input"},
+]
+
+
+def api_get(path: str, timeout: int = 10) -> dict:
+    """FastAPI 백엔드 GET 요청을 보내고 JSON 응답을 반환한다."""
+    response = requests.get(f"{API_BASE}{path}", timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def api_post(path: str, payload: dict, timeout: int = 30) -> dict:
+    """FastAPI 백엔드 POST 요청을 보내고 JSON 응답을 반환한다."""
+    response = requests.post(f"{API_BASE}{path}", json=payload, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def to_internal_api_url(url: str) -> str:
+    """공개 static URL을 현재 앱에서 접근 가능한 내부 API URL로 치환한다."""
+    if PUBLIC_API_BASE != API_BASE and url.startswith(PUBLIC_API_BASE):
+        return API_BASE + url[len(PUBLIC_API_BASE):]
+    return url
+
+
+@st.cache_data(ttl=300)
+def fetch_binary_data_url(url: str, mime_type: str) -> str:
+    """GLB 같은 바이너리 파일을 가져와 model-viewer에 넣을 data URL로 변환한다."""
+    response = requests.get(to_internal_api_url(url), timeout=30)
+    response.raise_for_status()
+    encoded = base64.b64encode(response.content).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+@st.cache_data(ttl=300)
+def fetch_text_asset(url: str) -> str:
+    """SVG/HTML 같은 텍스트 static asset을 백엔드에서 읽어온다."""
+    response = requests.get(to_internal_api_url(url), timeout=30)
+    response.raise_for_status()
+    return response.text
+
+
+@st.cache_data(ttl=15)
+def fetch_security_config() -> dict:
+    """API/AI/변환기 설정 상태를 백엔드에서 조회한다."""
+    try:
+        return api_get("/security/config")
+    except Exception:
+        return {"openai_api_key": "unknown", "local_llm_base_url": "unknown", "step_converter_cmd": "unknown"}
+
+
+@st.cache_data(ttl=30)
+def fetch_desk_assets() -> list[dict]:
+    """데스크 액세서리 목록을 백엔드에서 조회하고 실패 시 기본 목록을 반환한다."""
+    try:
+        return api_get("/assets/desk")["assets"]
+    except Exception:
+        return FALLBACK_ASSETS
+
+
 def sync_layout_from_model() -> None:
+    """선택한 키보드 모델 프리셋에 맞춰 세션의 레이아웃 값을 동기화한다."""
     defaults = KEYBOARD_MODEL_DEFAULTS.get(st.session_state.keyboard_model)
     if defaults:
         st.session_state.layout = defaults["layout"]
 
 
 def sync_step_from_sidebar() -> None:
+    """사이드바 단계 선택 값을 실제 작업 단계 세션 상태에 반영한다."""
     st.session_state.step = st.session_state.step_selector
 
 
-def render_model_viewer(model_url: str, height: int = 760) -> None:
-    viewer_url = f"{API_BASE}/viewer?model_url={quote(model_url, safe='')}"
-    st.iframe(viewer_url, height=height)
+def render_model_viewer(model_url: str, height: int = 720, camera: str | None = None) -> None:
+    """GLB 모델을 model-viewer 4.0 iframe으로 렌더링한다."""
+    camera_param = camera or st.session_state.camera
+    camera_orbits = {
+        "perspective": "32deg 58deg 165m",
+        "top": "0deg 0deg 190m",
+        "front": "0deg 76deg 150m",
+    }
+    data_url = fetch_binary_data_url(model_url, "model/gltf-binary")
+    components.html(
+        f"""
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <script type="module" src="https://unpkg.com/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
+            <style>
+              html, body {{ margin: 0; width: 100%; height: 100%; background: #f4f1eb; }}
+              model-viewer {{
+                width: 100%;
+                height: {height}px;
+                background: radial-gradient(ellipse at center top, #f9f6f0 0%, #e7ecf1 60%, #dfe4eb 100%);
+                border-radius: 8px;
+              }}
+            </style>
+          </head>
+          <body>
+            <model-viewer
+              src="{data_url}"
+              camera-controls
+              auto-rotate
+              auto-rotate-delay="6000"
+              environment-image="neutral"
+              tone-mapping="aces"
+              shadow-intensity="1.4"
+              shadow-softness="0.85"
+              exposure="1.05"
+              camera-orbit="{camera_orbits.get(camera_param, camera_orbits['perspective'])}"
+              min-camera-orbit="auto auto 70m"
+              max-camera-orbit="auto auto 260m"
+              interaction-prompt="none">
+            </model-viewer>
+          </body>
+        </html>
+        """,
+        height=height,
+    )
 
 
-def build_payload() -> dict:
+def build_render_payload() -> dict:
+    """현재 UI 상태를 데스크 셋업 렌더링 API 요청 payload로 변환한다."""
     return {
         "layout": st.session_state.layout,
         "case_color": st.session_state.case_color,
@@ -176,34 +384,72 @@ def build_payload() -> dict:
         "desk_color": st.session_state.desk_color,
         "mouse_color": st.session_state.mouse_color,
         "theme": st.session_state.theme,
+        "assets": st.session_state.asset_selection,
+        "desk_width": st.session_state.desk_width,
+        "desk_depth": st.session_state.desk_depth,
+        "monitor_size": st.session_state.monitor_size,
+        "case_finish": st.session_state.case_finish,
+        "plate_material": st.session_state.plate_material,
+        "pcb_color": st.session_state.pcb_color,
+        "switch_stem": st.session_state.switch_stem,
+        "show_internals": st.session_state.show_internals,
+        "monitor_arm_style": st.session_state.monitor_arm_style,
     }
 
 
-def render_keyboard_preview() -> None:
-    response = requests.post(
-        f"{API_BASE}/render/keyboard-preview",
-        json=build_payload(),
-        timeout=20,
-    )
-    response.raise_for_status()
-    data = response.json()
+def build_ad_payload() -> dict:
+    """렌더링 payload에 상품/광고 정보를 더해 AI 콘텐츠 API 요청 payload를 만든다."""
+    return {
+        **build_render_payload(),
+        "product_name": st.session_state.product_name,
+        "product_type": st.session_state.product_type,
+        "price": st.session_state.price,
+        "target_channel": st.session_state.target_channel,
+        "target_customer": st.session_state.target_customer,
+        "selling_point": st.session_state.selling_point,
+        "ad_tone": st.session_state.ad_tone,
+        "image_ratio": st.session_state.image_ratio,
+        "extra_request": st.session_state.extra_request,
+        "model_url": st.session_state.model_url,
+        "poster_template": st.session_state.poster_template,
+    }
+
+
+def render_desk_setup() -> None:
+    """데스크 셋업 렌더링 API를 호출하고 model_url과 메타데이터를 세션에 저장한다."""
+    data = api_post("/render/desk-setup", build_render_payload(), timeout=30)
     st.session_state.model_url = data["model_url"]
     st.session_state.model_meta = data
 
 
+def upload_reference_model(uploaded_file) -> None:
+    """업로드 파일을 base64로 인코딩해 모델 업로드 API로 전달한다."""
+    raw = uploaded_file.getvalue()
+    payload = {
+        "filename": uploaded_file.name,
+        "content_base64": base64.b64encode(raw).decode("ascii"),
+    }
+    data = api_post("/render/uploaded-model", payload, timeout=45)
+    st.session_state.uploaded_model_url = data["model_url"]
+    st.session_state.uploaded_model_meta = data
+
+
 def generate_copy() -> None:
-    response = requests.post(
-        f"{API_BASE}/ai/copy",
-        json=build_payload(),
-        timeout=20,
-    )
-    response.raise_for_status()
-    st.session_state.copy_result = response.json()
+    """광고 문구 생성 API를 호출하고 결과를 세션에 저장한다."""
+    st.session_state.copy_result = api_post("/ai/copy", build_ad_payload(), timeout=45)
+
+
+def generate_poster() -> None:
+    """포스터 생성 API를 호출하고 포스터/문구 결과를 세션에 저장한다."""
+    data = api_post("/ai/poster", build_ad_payload(), timeout=60)
+    st.session_state.poster_result = data
+    st.session_state.copy_result = data["copy"]
 
 
 def go_next() -> None:
-    if st.session_state.step == 2:
-        render_keyboard_preview()
+    """다음 단계로 이동하기 전에 필요한 3D 렌더 결과를 자동 생성한다."""
+    if st.session_state.step == 3 and not st.session_state.model_url:
+        render_desk_setup()
     st.session_state.step = min(4, st.session_state.step + 1)
 
 
@@ -231,18 +477,22 @@ with st.sidebar:
 
     st.divider()
 
+    config = fetch_security_config()
+    with st.expander("API / 보안 상태", expanded=True):
+        st.caption(f"OpenAI Key: {config.get('openai_api_key', 'unknown')}")
+        st.caption(f"Local LLM: {config.get('local_llm_base_url', 'unknown')}")
+        st.caption("Drawing mode: representative presets only")
+        st.caption("실제 키 값은 화면과 API 응답에 노출하지 않습니다.")
+
     with st.expander("도면 데이터", expanded=True):
         st.checkbox("키보드 하우징", value=True)
         st.checkbox("KiSwitch 스위치 footprint", value=True)
-        st.checkbox("Tsuki 60% PCB", value=True)
-        st.checkbox("키캡/플레이트", value=True)
-        st.checkbox("데스크매트", value=True)
-        st.checkbox("마우스", value=True)
-        st.checkbox("모니터/조명/소품", value=False)
+        st.checkbox("Acheron 계열 PCB", value=True)
+        st.checkbox("60/65/75/87/104 대표 도면", value=True)
+        st.checkbox("데스크테리어 절차적 GLB", value=True)
 
     with st.expander("렌더링 설정", expanded=True):
-        st.selectbox("렌더 모드", ["preview", "final"], index=0)
-        st.selectbox("카메라", ["three_quarter_top", "top_view", "front"], index=0)
+        st.selectbox("카메라", ["perspective", "top", "front"], key="camera")
         st.checkbox("scene_hash 캐시 사용", value=True)
 
     with st.expander("광고 산출물", expanded=False):
@@ -250,9 +500,6 @@ with st.sidebar:
         st.checkbox("상세페이지 배너", value=True)
         st.checkbox("광고 문구", value=True)
         st.checkbox("PPT 자료", value=False)
-
-    st.divider()
-    st.caption("사이드바는 Streamlit 기본 화살표 버튼으로 접고 펼칠 수 있습니다.")
 
 
 left_col, result_col = st.columns([0.62, 1.35], gap="large")
@@ -264,13 +511,16 @@ with left_col:
             st.markdown("#### 상품 정보")
             st.session_state.product_type = st.selectbox(
                 "상품 유형",
-                ["커스텀 키보드", "키캡", "데스크매트", "데스크 조명", "데스크 소품"],
+                ["커스텀 키보드", "키캡", "데스크매트", "데스크 조명", "모니터암", "데스크 소품", "번들 셋업"],
+                index=["커스텀 키보드", "키캡", "데스크매트", "데스크 조명", "모니터암", "데스크 소품", "번들 셋업"].index(st.session_state.product_type)
+                if st.session_state.product_type in ["커스텀 키보드", "키캡", "데스크매트", "데스크 조명", "모니터암", "데스크 소품", "번들 셋업"]
+                else 0,
             )
             st.session_state.product_name = st.text_input("상품명", st.session_state.product_name)
             st.session_state.price = st.text_input("판매가", st.session_state.price)
             st.session_state.target_channel = st.selectbox(
                 "판매 채널",
-                ["인스타그램", "스마트스토어", "상세페이지", "배너 광고"],
+                ["인스타그램", "스마트스토어", "상세페이지", "쿠팡 썸네일", "배너 광고"],
             )
             st.session_state.target_customer = st.text_input("타깃 고객", st.session_state.target_customer)
             st.session_state.selling_point = st.text_area("핵심 특징", st.session_state.selling_point, height=95)
@@ -288,25 +538,66 @@ with left_col:
                 key="keyboard_model",
                 on_change=sync_layout_from_model,
             )
+            layout_options = ["60", "65", "75", "87", "104"]
             st.session_state.layout = st.selectbox(
                 "배열",
-                ["65", "75"],
-                index=["65", "75"].index(st.session_state.layout),
+                layout_options,
+                index=layout_options.index(st.session_state.layout) if st.session_state.layout in layout_options else 1,
+                format_func=lambda k: KEYBOARD_SIZE_INFO.get(k, k + "%"),
             )
-            st.session_state.drawing_upload_mode = st.radio(
-                "도면 입력 방식",
-                ["샘플 JSON 사용", "도면 파일 업로드"],
-                horizontal=True,
-                index=["샘플 JSON 사용", "도면 파일 업로드"].index(st.session_state.drawing_upload_mode),
-            )
-            if st.session_state.drawing_upload_mode == "도면 파일 업로드":
-                st.file_uploader("도면 JSON/SVG/DXF 업로드", type=["json", "svg", "dxf"])
+            st.session_state.drawing_upload_mode = "대표 도면 선택"
+            st.caption("업로드 변환은 제외하고 검증된 대표 도면 JSON만 사용합니다.")
             model_info = KEYBOARD_MODEL_DEFAULTS[st.session_state.keyboard_model]
             st.info(f"기본값: {st.session_state.keyboard_model} / {model_info['layout']} 배열\n\n{model_info['description']}")
-            st.markdown("##### 키보드 부품 레퍼런스")
-            st.caption("하우징: keyboard_layout 샘플 도면")
-            st.caption("스위치: kiswitch/kiswitch KiCad footprint")
-            st.caption("PCB: AcheronProject/Tsuki 60% PCB")
+
+            with st.expander("키보드 상세 커스텀 (케이스/보강판/PCB/스위치)", expanded=True):
+                custom_a, custom_b = st.columns(2)
+                with custom_a:
+                    st.session_state.case_finish = st.selectbox(
+                        "케이스 마감",
+                        list(CASE_FINISH_LABELS.keys()),
+                        index=list(CASE_FINISH_LABELS.keys()).index(st.session_state.case_finish),
+                        format_func=lambda k: CASE_FINISH_LABELS[k],
+                    )
+                    st.session_state.plate_material = st.selectbox(
+                        "보강판(plate) 재질",
+                        list(PLATE_MATERIAL_LABELS.keys()),
+                        index=list(PLATE_MATERIAL_LABELS.keys()).index(st.session_state.plate_material),
+                        format_func=lambda k: PLATE_MATERIAL_LABELS[k],
+                    )
+                with custom_b:
+                    st.session_state.pcb_color = st.selectbox(
+                        "PCB 색상",
+                        list(PCB_COLOR_LABELS.keys()),
+                        index=list(PCB_COLOR_LABELS.keys()).index(st.session_state.pcb_color),
+                        format_func=lambda k: PCB_COLOR_LABELS[k],
+                    )
+                    st.session_state.switch_stem = st.selectbox(
+                        "스위치 stem",
+                        list(SWITCH_STEM_LABELS.keys()),
+                        index=list(SWITCH_STEM_LABELS.keys()).index(st.session_state.switch_stem),
+                        format_func=lambda k: SWITCH_STEM_LABELS[k],
+                    )
+                st.session_state.show_internals = st.checkbox(
+                    "내부 구조(보강판/PCB/스위치) 렌더 노출",
+                    value=st.session_state.show_internals,
+                    help="체크하면 키보드 측면에서 내부 적층 구조가 보이도록 두께를 살짝 분리합니다. 포스터 컷에서 분해도처럼 보이게 할 때 유용합니다.",
+                )
+
+            st.markdown("##### 데스크테리어 항목")
+            assets = fetch_desk_assets()
+            asset_labels = {asset["id"]: f"{asset['label']} · {asset.get('category', 'asset')}" for asset in assets}
+            categories: dict[str, list[str]] = {}
+            for asset in assets:
+                categories.setdefault(asset.get("category", "etc"), []).append(asset["id"])
+            asset_caption = " / ".join(f"{cat}({len(items)})" for cat, items in sorted(categories.items()))
+            st.caption(f"전체 {len(assets)}개 에셋 · {asset_caption}")
+            st.session_state.asset_selection = st.multiselect(
+                "렌더링에 포함할 판매/연출 물품",
+                options=[asset["id"] for asset in assets],
+                default=[item for item in st.session_state.asset_selection if item in asset_labels],
+                format_func=lambda item: asset_labels.get(item, item),
+            )
 
         elif st.session_state.step == 3:
             st.markdown("#### 가상 셋업")
@@ -315,32 +606,100 @@ with left_col:
                 ["minimal", "pastel", "premium", "gaming"],
                 index=["minimal", "pastel", "premium", "gaming"].index(st.session_state.theme),
             )
-            st.session_state.case_color = st.color_picker("하우징", st.session_state.case_color)
-            st.session_state.keycap_color = st.color_picker("키캡", st.session_state.keycap_color)
-            st.session_state.accent_keycap_color = st.color_picker("포인트 키", st.session_state.accent_keycap_color)
-            st.session_state.deskmat_color = st.color_picker("데스크매트", st.session_state.deskmat_color)
-            st.session_state.desk_color = st.color_picker("책상", st.session_state.desk_color)
-            st.session_state.mouse_color = st.color_picker("마우스", st.session_state.mouse_color)
+            desk_presets = {
+                "120 x 60 cm": (120.0, 60.0),
+                "120 x 80 cm": (120.0, 80.0),
+                "140 x 70 cm": (140.0, 70.0),
+                "160 x 80 cm": (160.0, 80.0),
+                "180 x 80 cm": (180.0, 80.0),
+                "직접 입력": (float(st.session_state.desk_width), float(st.session_state.desk_depth)),
+            }
+            previous_preset = st.session_state.get("desk_preset", "120 x 60 cm")
+            st.session_state.desk_preset = st.selectbox(
+                "책상 크기 프리셋",
+                list(desk_presets.keys()),
+                index=list(desk_presets.keys()).index(previous_preset) if previous_preset in desk_presets else 0,
+            )
+            if st.session_state.desk_preset != "직접 입력" and st.session_state.desk_preset != previous_preset:
+                st.session_state.desk_width, st.session_state.desk_depth = desk_presets[st.session_state.desk_preset]
 
-            if st.button("3D 셋업 생성", type="primary", use_container_width=True):
+            dim_a, dim_b = st.columns(2)
+            with dim_a:
+                st.session_state.desk_width = st.slider("책상 폭(cm)", 100.0, 200.0, float(st.session_state.desk_width), 5.0)
+            with dim_b:
+                st.session_state.desk_depth = st.slider("책상 깊이(cm)", 50.0, 90.0, float(st.session_state.desk_depth), 5.0)
+
+            mon_a, mon_b = st.columns(2)
+            with mon_a:
+                st.session_state.monitor_size = st.selectbox(
+                    "모니터 크기",
+                    options=list(MONITOR_SIZES.keys()),
+                    index=list(MONITOR_SIZES.keys()).index(st.session_state.monitor_size),
+                    format_func=lambda k: MONITOR_SIZES[k],
+                )
+                st.session_state.monitor_arm_style = st.selectbox(
+                    "모니터암 스타일",
+                    options=list(MONITOR_ARM_LABELS.keys()),
+                    index=list(MONITOR_ARM_LABELS.keys()).index(st.session_state.monitor_arm_style),
+                    format_func=lambda k: MONITOR_ARM_LABELS[k],
+                )
+            with mon_b:
+                kb_layout = st.session_state.layout
+                st.caption(f"키보드: {KEYBOARD_SIZE_INFO.get(kb_layout, kb_layout + '% 배열')}")
+                st.caption("렌더 단위: 1 GLB unit = 1 cm  |  1u = 1.905 cm")
+                st.caption(f"케이스: {CASE_FINISH_LABELS[st.session_state.case_finish]}")
+                st.caption(f"보강판: {PLATE_MATERIAL_LABELS[st.session_state.plate_material]}")
+                st.caption(f"스위치: {SWITCH_STEM_LABELS[st.session_state.switch_stem]}")
+            color_a, color_b = st.columns(2)
+            with color_a:
+                st.session_state.case_color = st.color_picker("하우징", st.session_state.case_color)
+                st.session_state.keycap_color = st.color_picker("키캡", st.session_state.keycap_color)
+                st.session_state.accent_keycap_color = st.color_picker("포인트 키", st.session_state.accent_keycap_color)
+            with color_b:
+                st.session_state.deskmat_color = st.color_picker("데스크매트", st.session_state.deskmat_color)
+                st.session_state.desk_color = st.color_picker("책상", st.session_state.desk_color)
+                st.session_state.mouse_color = st.color_picker("마우스", st.session_state.mouse_color)
+
+            if st.button("3D 데스크 셋업 생성", type="primary", use_container_width=True):
                 try:
-                    render_keyboard_preview()
+                    render_desk_setup()
                     st.success("3D GLB 생성 완료")
                 except Exception as exc:
                     st.error(f"렌더링 실패: {exc}")
 
         else:
             st.markdown("#### 광고 콘텐츠")
-            st.selectbox("광고 톤", ["프리미엄형", "감성형", "할인형", "기능강조형"])
-            st.selectbox("이미지 비율", ["1:1", "4:5", "16:9"])
-            st.text_area("추가 요청", "깔끔하고 고급스러운 데스크셋업 광고 느낌", height=110)
+            ad_a, ad_b = st.columns(2)
+            with ad_a:
+                st.session_state.ad_tone = st.selectbox("광고 톤", ["프리미엄형", "감성형", "할인형", "기능강조형"])
+                st.session_state.image_ratio = st.selectbox("이미지 비율", ["1:1", "4:5", "16:9"])
+            with ad_b:
+                st.session_state.poster_template = st.selectbox(
+                    "포스터 템플릿",
+                    options=list(POSTER_TEMPLATE_LABELS.keys()),
+                    index=list(POSTER_TEMPLATE_LABELS.keys()).index(st.session_state.poster_template),
+                    format_func=lambda k: POSTER_TEMPLATE_LABELS[k],
+                )
+                config_now = fetch_security_config()
+                local_llm_status = "🟢" if config_now.get("local_llm_base_url") == "set" else "⚪"
+                openai_status = "🟢" if config_now.get("openai_api_key") == "set" else "⚪"
+                local_img_status = "🟢" if config_now.get("local_image_endpoint") == "set" else "⚪"
+                st.caption(f"AI: OpenAI {openai_status}  Local LLM {local_llm_status}  Local Image {local_img_status}")
+            st.session_state.extra_request = st.text_area("추가 요청", st.session_state.extra_request, height=110)
 
-            if st.button("광고 문구 생성", type="primary", use_container_width=True):
+            col_copy, col_poster = st.columns(2)
+            if col_copy.button("광고 문구 생성", type="secondary", use_container_width=True):
                 try:
                     generate_copy()
                     st.success("광고 문구 생성 완료")
                 except Exception as exc:
                     st.error(f"문구 생성 실패: {exc}")
+            if col_poster.button("포스터 생성", type="primary", use_container_width=True):
+                try:
+                    generate_poster()
+                    st.success("포스터 생성 완료")
+                except Exception as exc:
+                    st.error(f"포스터 생성 실패: {exc}")
 
     nav_a, nav_b = st.columns(2)
     if nav_a.button("이전", use_container_width=True, disabled=st.session_state.step <= 1):
@@ -360,13 +719,18 @@ with result_col:
         top_a, top_b, top_c = st.columns([0.45, 0.3, 0.25])
         with top_a:
             st.markdown("### 가상 데스크 셋업 결과")
-            st.caption("도면/규격 JSON을 기반으로 생성된 3D 미리보기와 광고 결과물")
+            st.caption("도면/규격 JSON과 데스크테리어 항목을 기반으로 생성된 3D 미리보기와 광고 결과물")
         with top_b:
             meta = st.session_state.model_meta or {}
+            kb_info = KEYBOARD_SIZE_INFO.get(st.session_state.layout, st.session_state.layout + "%")
+            mon_info = MONITOR_SIZES.get(st.session_state.monitor_size, st.session_state.monitor_size + '"')
+            desk_w = meta.get("desk_width", st.session_state.desk_width)
+            desk_d = meta.get("desk_depth", st.session_state.desk_depth)
             st.markdown(
                 f"""
-                <span class="metric-chip">Layout {st.session_state.layout}</span>
-                <span class="metric-chip">Keys {meta.get("key_count", "-")}</span>
+                <span class="metric-chip">KB {kb_info}</span>
+                <span class="metric-chip">Mon {mon_info}</span>
+                <span class="metric-chip">Desk {desk_w:.0f}×{desk_d:.0f} cm</span>
                 <span class="metric-chip">{st.session_state.theme}</span>
                 """,
                 unsafe_allow_html=True,
@@ -374,19 +738,55 @@ with result_col:
         with top_c:
             if st.button("결과 새로고침", use_container_width=True):
                 try:
-                    render_keyboard_preview()
+                    render_desk_setup()
                     st.rerun()
                 except Exception as exc:
                     st.error(f"실패: {exc}")
 
         st.divider()
 
-        if st.session_state.model_url:
-            render_model_viewer(st.session_state.model_url, height=720)
-        else:
-            st.markdown("#### 아직 생성된 3D 결과가 없습니다.")
-            st.write("왼쪽 입력 패널에서 `가상 셋업` 단계로 이동한 뒤 `3D 셋업 생성`을 누르면 이 영역에 결과가 표시됩니다.")
-            st.json(build_payload())
+        setup_tab, drawing_tab, poster_tab = st.tabs(["3D 셋업", "대표 도면", "광고 포스터"])
+
+        with setup_tab:
+            if st.session_state.model_url:
+                render_model_viewer(st.session_state.model_url, height=600)
+            else:
+                st.markdown("#### 아직 생성된 3D 결과가 없습니다.")
+                st.write("왼쪽 입력 패널에서 `가상 셋업` 단계로 이동한 뒤 `3D 데스크 셋업 생성`을 누르면 이 영역에 결과가 표시됩니다.")
+                st.json(build_render_payload())
+
+        with drawing_tab:
+            model_info = KEYBOARD_MODEL_DEFAULTS.get(st.session_state.keyboard_model, {})
+            st.write(f"선택 도면: **{st.session_state.keyboard_model}**")
+            st.write(f"배열: **{st.session_state.layout}%**")
+            st.caption(model_info.get("description", "대표 도면 JSON을 기반으로 렌더링합니다."))
+            st.json({
+                "drawing_mode": "representative_preset",
+                "layout": st.session_state.layout,
+                "layout_file": f"layout_{st.session_state.layout}.json",
+                "supported_layouts": ["60", "65", "75", "87", "104"],
+            })
+
+        with poster_tab:
+            poster = st.session_state.poster_result
+            if poster:
+                template_label = POSTER_TEMPLATE_LABELS.get(poster.get("poster_template", ""), poster.get("poster_template", ""))
+                badge = f"`{template_label}`"
+                if poster.get("image_embedded"):
+                    badge += "  ·  🖼️ 로컬 이미지 합성"
+                elif (poster.get("image_reference") or poster.get("local_image_reference") or {}).get("error"):
+                    badge += "  ·  ⚠️ 이미지 모델 오류"
+                st.caption(badge)
+                components.html(fetch_text_asset(poster["poster_url"]), height=600, scrolling=True)
+                with st.expander("이미지 생성 프롬프트", expanded=False):
+                    st.write(poster["image_prompt"])
+                image_reference = poster.get("image_reference") or poster.get("local_image_reference")
+                if image_reference:
+                    with st.expander("이미지 모델 응답", expanded=False):
+                        st.json(image_reference)
+            else:
+                st.write("광고 콘텐츠 단계에서 `포스터 생성`을 누르면 SVG 포스터와 생성 프롬프트가 표시됩니다.")
+                st.caption("OPENAI_IMAGE_MODEL 또는 LOCAL_IMAGE_ENDPOINT가 설정되어 있으면 생성된 이미지가 포스터에 직접 합성됩니다.")
 
         st.divider()
 
@@ -400,8 +800,10 @@ with result_col:
             st.markdown("#### 생성 문구")
             result = st.session_state.copy_result
             if result:
-                for copy in result["copies"][:2]:
+                for copy in result.get("copies", [])[:3]:
                     st.write(f"- {copy}")
-                st.caption(" ".join(result["hashtags"]))
+                st.caption(" ".join(result.get("hashtags", [])))
+                if result.get("error"):
+                    st.caption(f"fallback note: {result['error']}")
             else:
                 st.caption("광고 콘텐츠 단계에서 문구를 생성하면 여기에 표시됩니다.")
