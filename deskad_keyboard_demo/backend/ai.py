@@ -397,6 +397,68 @@ def generate_copy_experiment(payload: dict, providers: list[str] | None = None) 
     return {"providers": available_text_providers()["providers"], "results": results}
 
 
+LAYOUT_PROMPT_LABELS = {
+    "60": "60% compact layout (61 keys, no function row, no dedicated arrow cluster, smallest footprint)",
+    "65": "65% compact layout (67 keys, no function row but with right-side arrow cluster)",
+    "75": "75% compact layout (84 keys, function row plus arrow cluster, gapless tight layout)",
+    "87": "TKL tenkeyless layout (87 keys, full function row plus arrow cluster, no numpad)",
+    "104": "full-size 100% layout (104 keys, function row plus arrow cluster plus right-side numpad)",
+}
+
+_COLOR_ANCHORS: tuple[tuple[tuple[int, int, int], str], ...] = (
+    ((0, 0, 0), "black"),
+    ((47, 52, 56), "charcoal dark gray"),
+    ((120, 120, 120), "neutral mid gray"),
+    ((200, 200, 200), "light silver gray"),
+    ((255, 255, 255), "pure white"),
+    ((244, 234, 215), "ivory off-white"),
+    ((200, 193, 178), "warm cream beige"),
+    ((212, 163, 115), "tan caramel brown"),
+    ((139, 69, 19), "saddle brown"),
+    ((65, 30, 14), "deep espresso brown"),
+    ((230, 100, 90), "coral red"),
+    ((200, 30, 30), "vivid crimson red"),
+    ((255, 150, 60), "warm orange"),
+    ((230, 200, 60), "sunflower yellow"),
+    ((90, 160, 80), "olive green"),
+    ((50, 130, 50), "forest green"),
+    ((100, 180, 200), "sky cyan"),
+    ((40, 100, 150), "deep ocean blue"),
+    ((111, 143, 175), "muted slate blue"),
+    ((30, 30, 80), "navy indigo"),
+    ((140, 90, 180), "lavender purple"),
+    ((230, 130, 180), "pastel pink"),
+)
+
+
+def _hex_to_rgb(hex_value: str) -> tuple[int, int, int] | None:
+    text = (hex_value or "").strip().lstrip("#")
+    if len(text) != 6:
+        return None
+    try:
+        return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+    except ValueError:
+        return None
+
+
+def describe_color(value: object) -> str:
+    """Map HEX strings to the closest English descriptor; pass-through for word labels."""
+    if value is None:
+        return ""
+    text = sanitize_user_text(value, limit=24)
+    if not text:
+        return ""
+    rgb = _hex_to_rgb(text)
+    if rgb is None:
+        return text.lower()
+    if max(rgb) - min(rgb) <= 12:
+        candidates = [a for a in _COLOR_ANCHORS if max(a[0]) - min(a[0]) <= 10]
+    else:
+        candidates = list(_COLOR_ANCHORS)
+    nearest = min(candidates, key=lambda anchor: sum((a - b) ** 2 for a, b in zip(anchor[0], rgb)))
+    return f"{nearest[1]} ({text.lower()})"
+
+
 def build_image_prompt(payload: dict, copy_result: dict) -> str:
     assets_value = ", ".join(sanitize_user_text(a, limit=40) for a in payload.get("assets", []) if a)
     assets = assets_value or "keyboard, deskmat, monitor"
@@ -412,14 +474,32 @@ def build_image_prompt(payload: dict, copy_result: dict) -> str:
     keycap_profile = sanitize_user_text(payload.get("keycap_profile", "cherry"), limit=30)
     mount_type = sanitize_user_text(payload.get("mount_type", "top_mount"), limit=30)
     reference = sanitize_user_text(payload.get("reference_asset_path") or "procedural 3D preview", limit=120)
+    layout = sanitize_user_text(payload.get("layout", "65"), limit=10)
+    layout_label = LAYOUT_PROMPT_LABELS.get(layout, f"{layout}% custom keyboard layout")
+    case_color = describe_color(payload.get("case_color"))
+    keycap_color = describe_color(payload.get("keycap_color"))
+    accent_color = describe_color(payload.get("accent_keycap_color"))
+    pcb_color = describe_color(payload.get("pcb_color"))
+    color_parts: list[str] = []
+    if case_color:
+        color_parts.append(f"case/housing {case_color}")
+    if keycap_color:
+        color_parts.append(f"primary keycaps {keycap_color}")
+    if accent_color:
+        color_parts.append(f"accent keycaps {accent_color}")
+    if pcb_color:
+        color_parts.append(f"PCB {pcb_color}")
+    color_clause = ", ".join(color_parts)
     return (
         f"Photorealistic Korean e-commerce hero image for {product}. "
         f"Use a measured deskterior setup with {assets}, style {style}, "
         f"{monitor_size}-inch monitor, {desk_w:.0f}x{desk_d:.0f}cm desk, clean cable-managed composition. "
+        f"Keyboard format: {layout_label}. "
         f"Keyboard material details: {case_finish} housing with bevels and side seams, {mount_type} construction cues, "
         f"{plate} plate visible between keycaps, {switch_family} family {switch} switches, "
         f"{keycap_profile} profile satin PBT keycaps with subtle legends and natural shadows. "
-        "Real desk surface, woven deskmat, monitor glass reflections, realistic scale, soft contact shadows, "
+        + (f"Color palette: {color_clause}. " if color_clause else "")
+        + "Real desk surface, woven deskmat, monitor glass reflections, realistic scale, soft contact shadows, "
         "PBR materials, gentle daylight mixed with warm practical lights, shallow product-photography depth cues. "
         "Three-quarter front top view with negative space for Korean headline, no brand logos, no copyrighted imagery. "
         f"Reference asset path for layout/style constraints: {reference}. "
