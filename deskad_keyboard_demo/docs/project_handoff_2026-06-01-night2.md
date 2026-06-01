@@ -4,7 +4,7 @@
 프로젝트 경로: `/home/leetaeho/ai_07_high/deskad_keyboard_demo`  
 직전 문서: `docs/project_handoff_2026-06-01-night.md`  
 작업 브랜치: `feat/pr9-openai-image-ui-merge` (main에 merge 완료)  
-**현재 main 최신 커밋: `090df5e` (Merge PR #9)**
+**현재 main 최신 커밋: `4f3226e` (night2 문서 커밋, PR #9 merge commit은 `090df5e`)**
 
 ---
 

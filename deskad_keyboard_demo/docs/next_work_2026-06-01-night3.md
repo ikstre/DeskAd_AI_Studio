@@ -1,19 +1,20 @@
-# DeskAd AI Studio - 다음 작업 계획 (2026-06-01 야간 2차 기준)
+# DeskAd AI Studio - 다음 작업 계획 (2026-06-01 야간 3차 기준)
 
 작성일: 2026-06-01  
-기준 브랜치: `main` (PR #6 + PR #9 모두 merge 완료)  
-직전 문서: `docs/next_work_2026-06-01-night.md` (이 문서로 대체)
+기준 브랜치: `main` (PR #6 + PR #9 merge, 자동 폴링 미커밋)  
+직전 문서: `docs/next_work_2026-06-01-night2.md` (이 문서로 대체)
 
 ---
 
 ## 0. 직전 완료 작업 요약
 
-| PR | 내용 | 상태 |
+| 항목 | 내용 | 상태 |
 |---|---|---|
-| #6 | GPU 런타임 캐시 + exclusive worker + picker UI + P0 회귀 픽스 | ✅ merged |
-| #9 | OpenAI 이미지 백엔드 + UI 반응형 개선 (PR #8 rebase) | ✅ merged |
+| PR #6 | GPU 런타임 캐시 + exclusive worker + picker UI + P0 회귀 픽스 | ✅ merged |
+| PR #9 | OpenAI 이미지 백엔드 + UI 반응형 개선 | ✅ merged |
+| P1 2-1 | 이미지 작업 자동 폴링 + 포스터 흐름 연결 | ✅ 구현 완료 (미커밋) |
 
-**main 현재 커밋**: `4f3226e` (night2 문서 커밋, PR #9 merge commit은 `090df5e`)
+**main 현재 커밋**: `4f3226e` (미커밋 변경 있음 — `streamlit_app.py`)
 
 ---
 
@@ -21,7 +22,13 @@
 
 ```bash
 cd /home/leetaeho/ai_07_high/deskad_keyboard_demo
-git checkout main && git pull origin main
+
+# 1. 미커밋 변경사항 확인 + 커밋
+git diff --stat
+git add streamlit_app.py
+git commit -m "feat: 이미지 작업 자동 폴링 + 포스터 흐름 연결"
+
+# 2. 서버 재시작
 bash start.sh --restart
 curl -s http://127.0.0.1:8010/health
 ```
@@ -30,9 +37,22 @@ curl -s http://127.0.0.1:8010/health
 
 ## 1. P0 — 즉시
 
-### 1-1. HyperCLOVA X SEED 실제 연결 검증
+### 1-1. 자동 폴링 동작 검증
 
-**현황**: 코드 완성 (`tools/hyperclova_seed_openai_server.py`, `is_loopback_base_url()`). HF 약관 미승인 상태.
+구현은 완료됐으나 실서버 동작 미검증.
+
+**검증 순서**:
+1. Streamlit `:8501` 접속
+2. 이미지 작업 제출 → "이미지 작업 자동 갱신 중 · {status} · N초" 캡션 표시 확인
+3. 포스터 버튼 disabled + 캡션 "이미지 작업이 완료되면 포스터 생성이 활성화됩니다." 확인
+4. 작업 완료 후 "이미지 작업 완료. 포스터 생성에 자동으로 연결됩니다." 토스트 확인
+5. 포스터 버튼 자동 활성화 확인
+
+---
+
+### 1-2. HyperCLOVA X SEED 실제 연결 검증
+
+**현황**: 코드 완성 (`tools/hyperclova_seed_openai_server.py`). HF 약관 미승인 상태.
 
 **작업 순서**:
 1. HF 약관 승인: `https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B`
@@ -59,41 +79,9 @@ curl -s http://127.0.0.1:8010/health
 
 ---
 
-### 1-2. OpenAI 이미지 백엔드 실검증
-
-**현황**: `generate_openai_image_reference()` 코드 완성 (PR #9 merge). 실호출 미검증.
-
-**작업**:
-1. `.env`에 추가:
-   ```bash
-   OPENAI_API_KEY=<key>
-   OPENAI_IMAGE_MODEL=dall-e-3
-   IMAGE_MODEL_BACKEND=auto
-   ```
-2. `POST /ai/image/jobs` 호출 후 `backend_config.openai_image_model: set` 확인
-3. `POST /ai/poster` 응답에 `image_reference` 필드 존재, `local_image_reference` 미존재 확인
-4. ComfyUI 없이 OpenAI만으로 포스터 합성 end-to-end 검증
-
----
-
 ## 2. P1 — UX 개선
 
-### 2-1. 이미지 작업 자동 폴링 + 포스터 흐름 연결
-
-**현황**: 이미지 제출 후 결과 확인 수동. 포스터 버튼 활성화 조건 없음.
-
-**2026-06-01 추가 진행**:
-- `streamlit_app.py`에 이미지 job 자동 폴링 상태(`image_polling_enabled`, `image_poll_started_at`, timeout) 추가
-- 이미지 작업 생성 후 pending 상태면 3초 간격으로 `GET /ai/image/jobs/{job_id}` 자동 갱신
-- 이미지 작업 완료 전에는 포스터 생성 버튼 비활성화
-- `build_ad_payload()`가 완료된 image job만 `image_job_id`로 넘기도록 변경
-- 완료된 ComfyUI job으로 `/ai/poster` 호출 시 `image_embedded: true` 확인
-
-**구현 방향**:
-- `streamlit_app.py:refresh_image_job()` 확장
-- `st.empty()` 루프로 `GET /ai/image/jobs/{job_id}` 폴링, `status == "completed"` 시 자동 진행
-- timeout 처리 (최대 3분), ComfyUI 오류 상태 표시
-- cache hit job (`status: queued`)도 폴링 필요
+### 2-1. ~~이미지 작업 자동 폴링 + 포스터 흐름 연결~~ ✅ 완료
 
 ---
 
@@ -117,7 +105,24 @@ git clone https://github.com/naraku010/keyboard_layout /opt/shared_data/keyboard
 
 ## 3. P2 — 인프라
 
-### 3-1. STEP converter 설치
+### 3-1. OpenAI 이미지 백엔드 실검증
+
+**현황**: `generate_openai_image_reference()` 코드 완성 (PR #9 merge). 실호출 미검증.
+
+**작업**:
+1. `.env`에 추가:
+   ```bash
+   OPENAI_API_KEY=<key>
+   OPENAI_IMAGE_MODEL=dall-e-3
+   IMAGE_MODEL_BACKEND=auto
+   ```
+2. `POST /ai/image/jobs` 호출 후 `backend_config.openai_image_model: set` 확인
+3. `POST /ai/poster` 응답에 `image_reference` 필드 존재, `local_image_reference` 미존재 확인
+4. ComfyUI 없이 OpenAI만으로 포스터 합성 end-to-end 검증
+
+---
+
+### 3-2. STEP converter 설치
 
 ```bash
 conda run -n sprint_high pip install "trimesh[all]"
@@ -126,9 +131,9 @@ conda run -n sprint_high pip install "trimesh[all]"
 
 ---
 
-### 3-2. exclusive worker 전환 실검증
+### 3-3. exclusive worker 전환 실검증
 
-HyperCLOVA SEED 연결(1-1) 완료 후 가능.
+HyperCLOVA SEED 연결(1-2) 완료 후 가능.
 
 ```bash
 # ComfyUI active 상태에서 text 요청
@@ -147,7 +152,7 @@ nvidia-smi  # VRAM 복귀 확인
 
 ---
 
-### 3-3. idle unload 실검증
+### 3-4. idle unload 실검증
 
 ```bash
 # 단기 테스트 (30초)
@@ -162,7 +167,7 @@ GPU_WORKER_IDLE_TIMEOUT_SECONDS=30 bash start.sh --restart
 
 | 항목 | 상태 |
 |---|---|
-| 모델 라우팅 실분리 (kanana/midm 독립 슬롯) | HyperCLOVA 연결(1-1) 후 의미 있음 |
+| 모델 라우팅 실분리 (kanana/midm 독립 슬롯) | HyperCLOVA 연결(1-2) 후 의미 있음 |
 | `product_name`에서 한국어 색상 키워드 추출 → `case_color` 기본값 동기화 | 선택 작업 |
 | API 응답 캐싱 (`/ai/providers` TTL 60s, `/layouts` TTL 300s) | 낮은 우선순위 |
 
