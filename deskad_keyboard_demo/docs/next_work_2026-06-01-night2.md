@@ -32,7 +32,38 @@ curl -s http://127.0.0.1:8010/health
 
 ### 1-1. HyperCLOVA X SEED 실제 연결 검증
 
-**현황**: 코드 완성 (`tools/hyperclova_seed_openai_server.py`, `is_loopback_base_url()`). HF 약관 미승인 상태.
+**현황**: 2026-06-01 추가 검증 완료. HF gated repo 약관 승인 후 `HyperCLOVAX-SEED-Text-Instruct-1.5B`의 `config.json` 다운로드와 `/ai/copy/experiment?force_regen=true` HyperCLOVA 단독 실호출 모두 성공.
+
+**현재 `.env` 적용값**:
+```bash
+HF_TOKEN=<set>
+HYPERCLOVA_BASE_URL=http://127.0.0.1:11501/v1
+HYPERCLOVA_MODEL=naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B
+HYPERCLOVA_USE_DIRECT_API=false
+TEXT_WORKER_CMD="conda run -n sprint_high python tools/hyperclova_seed_openai_server.py"
+```
+
+**검증 결과**:
+- HF token user: `ikstre`
+- `curl -s http://127.0.0.1:8010/ai/providers`에서 HyperCLOVA model이 1.5B로 표시됨
+- `POST /ai/copy/experiment?force_regen=true` + `{"providers":["hyperclova"]}` 응답에서 `provider: hyperclova`, `status: ok`, `copy.provider: hyperclova_x` 확인
+
+**재현/회귀 검증 순서**:
+1. 서버 재시작:
+   ```bash
+   bash start.sh --restart
+   ```
+2. 확인:
+   ```bash
+   curl -s http://127.0.0.1:8010/ai/providers | python3 -m json.tool
+   curl -sS --max-time 900 -X POST 'http://127.0.0.1:8010/ai/copy/experiment?force_regen=true' \
+     -H 'Content-Type: application/json' -d '{"providers":["hyperclova"]}' | python3 -m json.tool
+   ```
+
+**남은 점검**: exclusive worker/idle unload 실검증은 3-2, 3-3에서 계속 진행.
+
+<details>
+<summary>초기 연결 절차 기록</summary>
 
 **작업 순서**:
 1. HF 약관 승인: `https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B`
@@ -56,6 +87,8 @@ curl -s http://127.0.0.1:8010/health
 
 **VRAM**: FLUX ≈ 14GB + HyperCLOVA 1.5B ≈ 4GB = 18GB.  
 `GPU_WORKER_MODE=exclusive`이므로 text 요청 시 ComfyUI 자동 stop, 충돌 없음.
+
+</details>
 
 ---
 

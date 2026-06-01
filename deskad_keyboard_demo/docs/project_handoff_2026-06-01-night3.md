@@ -3,15 +3,15 @@
 작성일: 2026-06-01  
 프로젝트 경로: `/home/leetaeho/ai_07_high/deskad_keyboard_demo`  
 직전 문서: `docs/project_handoff_2026-06-01-night2.md`  
-작업 브랜치: `main` (직접 작업, 미커밋 상태)  
-**현재 main 최신 커밋: `4f3226e` (night2 문서 커밋)**
+작업 브랜치: `main` (로컬 커밋 2개가 `origin/main`보다 앞섬)  
+**현재 로컬 main 최신 커밋: `6f9f6f3` (야간 3차 인수인계 문서 커밋)**
 
 ---
 
 ## 1. 이번 세션 한 줄 요약
 
-`streamlit_app.py`에 이미지 작업 자동 폴링 + 포스터 흐름 연결을 구현 (P1 2-1 완료).  
-이미지 작업 제출 직후 `status: pending` 상태이면 자동 갱신을 시작하고, `completed` 되면 포스터 버튼을 자동 활성화.
+`streamlit_app.py`에 이미지 작업 자동 폴링 + 포스터 흐름 연결을 구현하고 로컬 커밋 완료.  
+추가로 HyperCLOVA X SEED 1.5B gated repo 접근과 실제 `/ai/copy/experiment` 호출까지 검증 완료.
 
 ---
 
@@ -19,7 +19,10 @@
 
 | 파일 | 변경 유형 | 내용 |
 |---|---|---|
-| `streamlit_app.py` | 기능 추가 | 이미지 작업 자동 폴링 전체 구현 |
+| `streamlit_app.py` | 기능 추가 | 이미지 작업 자동 폴링 전체 구현 (`3640000`) |
+| `tools/hyperclova_seed_openai_server.py` | 설정 개선 | `HYPERCLOVA_MODEL` 환경변수도 모델 선택에 사용하도록 변경 (미커밋) |
+| `docs/project_handoff_2026-06-01-night2.md` | 문서 갱신 | HyperCLOVA 1.5B 검증 결과 반영 (미커밋) |
+| `docs/next_work_2026-06-01-night2.md` | 문서 갱신 | HyperCLOVA 작업 상태를 완료/회귀 검증으로 정리 (미커밋) |
 
 ---
 
@@ -108,23 +111,23 @@ if poster_disabled:
 | 항목 | 값 |
 |---|---|
 | conda env | `sprint_high` |
-| FastAPI | `:8010` |
-| Streamlit | `:8501` |
+| FastAPI | `:8010` (재시작 완료) |
+| Streamlit | `:8501` (재시작 완료) |
 | Ollama | `:11434` (qwen2.5:7b) |
 | ComfyUI | `:8188` (FLUX.1 schnell fp8) |
-| HyperCLOVA SEED | `:11501` — 미기동 |
+| HyperCLOVA SEED | `:11501` — `TEXT_WORKER_CMD`로 on-demand 기동, 1.5B 실호출 검증 완료 |
 | GPU_WORKER_MODE | `exclusive` |
 | GPU_WORKER_IDLE_TIMEOUT_SECONDS | `600` |
 | 캐시 경로 | `data/runtime/cache/{text,image}/` |
 | 외부 접근 | `https://34.27.86.182:8443` |
-| 미커밋 변경 | `streamlit_app.py` (자동 폴링 구현) |
+| 루트 파일시스템 | 약 `290G` total / `234G` available (`df -h /` 기준) |
+| 미커밋 변경 | `tools/hyperclova_seed_openai_server.py`, night2/night3 문서 갱신 |
 
-> **주의**: 변경사항이 미커밋 상태입니다. 커밋 후 서버 재시작 필요.
+> **주의**: 자동 폴링 구현은 이미 로컬 커밋(`3640000`)됐지만 아직 `origin/main`에는 push되지 않은 상태입니다. 현재 추가 변경(`tools/hyperclova_seed_openai_server.py`, 문서)은 미커밋입니다.
 > ```bash
 > cd /home/leetaeho/ai_07_high/deskad_keyboard_demo
-> git add streamlit_app.py
-> git commit -m "feat: 이미지 작업 자동 폴링 + 포스터 흐름 연결"
-> bash start.sh --restart
+> git status --short --branch
+> git diff --stat
 > ```
 
 ---
@@ -133,10 +136,14 @@ if poster_disabled:
 
 | 항목 | 결과 |
 |---|---|
-| `py_compile streamlit_app.py` | 확인 필요 (직접 실행) |
+| `py_compile tools/hyperclova_seed_openai_server.py streamlit_app.py backend/ai.py backend/main.py` | ✅ |
+| `scan_secrets --all` | ✅ clean (121 files) |
 | 폴링 로직 구현 완료 | ✅ |
 | 포스터 버튼 disabled 처리 | ✅ |
 | `current_image_job_id()` 안전망 | ✅ |
+| HF gated repo 1.5B 접근 | ✅ `config.json` 다운로드 성공 |
+| HyperCLOVA 1.5B copy 실호출 | ✅ `/ai/copy/experiment?force_regen=true` 응답 `status: ok` |
+| 서버 재시작 | ✅ `bash start.sh --restart` 완료 |
 
 ---
 
@@ -145,8 +152,9 @@ if poster_disabled:
 상세 계획: `docs/next_work_2026-06-01-night3.md`
 
 ### P0 (즉시)
-- **커밋 + 서버 재시작** — 미커밋 변경사항 적용
-- **HyperCLOVA X SEED 실연결** — HF 약관 승인 + `.env` 설정
+- **현재 미커밋 변경 정리** — `tools/hyperclova_seed_openai_server.py` + 문서 변경 커밋 여부 결정
+- **자동 폴링 UI 실검증** — 브라우저에서 pending → completed → 포스터 버튼 활성화 확인
+- **OpenAI 이미지 백엔드 실검증** — `OPENAI_API_KEY` 설정 후 실제 이미지 생성 확인
 
 ### P1 (UX)
 - 노션 reference 다운로드 + grid 미리보기

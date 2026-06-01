@@ -1,7 +1,7 @@
 # DeskAd AI Studio - 다음 작업 계획 (2026-06-01 야간 3차 기준)
 
 작성일: 2026-06-01  
-기준 브랜치: `main` (PR #6 + PR #9 merge, 자동 폴링 미커밋)  
+기준 브랜치: `main` (PR #6 + PR #9 merge, 자동 폴링 로컬 커밋 완료)  
 직전 문서: `docs/next_work_2026-06-01-night2.md` (이 문서로 대체)
 
 ---
@@ -12,9 +12,11 @@
 |---|---|---|
 | PR #6 | GPU 런타임 캐시 + exclusive worker + picker UI + P0 회귀 픽스 | ✅ merged |
 | PR #9 | OpenAI 이미지 백엔드 + UI 반응형 개선 | ✅ merged |
-| P1 2-1 | 이미지 작업 자동 폴링 + 포스터 흐름 연결 | ✅ 구현 완료 (미커밋) |
+| P1 2-1 | 이미지 작업 자동 폴링 + 포스터 흐름 연결 | ✅ 구현 완료 (`3640000`) |
+| P0 1-2 | HyperCLOVA X SEED 1.5B 실연결 | ✅ HF gated 접근 + copy 실호출 완료 |
 
-**main 현재 커밋**: `4f3226e` (미커밋 변경 있음 — `streamlit_app.py`)
+**로컬 main 현재 커밋**: `6f9f6f3` (`origin/main`보다 2 commits ahead)  
+**현재 미커밋 변경**: `tools/hyperclova_seed_openai_server.py`, night2/night3 문서 갱신
 
 ---
 
@@ -23,12 +25,10 @@
 ```bash
 cd /home/leetaeho/ai_07_high/deskad_keyboard_demo
 
-# 1. 미커밋 변경사항 확인 + 커밋
+# 1. 미커밋 변경사항 확인
 git diff --stat
-git add streamlit_app.py
-git commit -m "feat: 이미지 작업 자동 폴링 + 포스터 흐름 연결"
 
-# 2. 서버 재시작
+# 2. 서버 상태 확인
 bash start.sh --restart
 curl -s http://127.0.0.1:8010/health
 ```
@@ -39,7 +39,7 @@ curl -s http://127.0.0.1:8010/health
 
 ### 1-1. 자동 폴링 동작 검증
 
-구현은 완료됐으나 실서버 동작 미검증.
+구현은 로컬 커밋 완료. 브라우저 UI에서 pending 상태 자동 갱신 흐름은 직접 확인 필요.
 
 **검증 순서**:
 1. Streamlit `:8501` 접속
@@ -50,9 +50,32 @@ curl -s http://127.0.0.1:8010/health
 
 ---
 
-### 1-2. HyperCLOVA X SEED 실제 연결 검증
+### 1-2. ~~HyperCLOVA X SEED 실제 연결 검증~~ ✅ 완료
 
-**현황**: 코드 완성 (`tools/hyperclova_seed_openai_server.py`). HF 약관 미승인 상태.
+**현황**: 2026-06-01 추가 검증 완료. HF gated repo 약관 승인 후 `HyperCLOVAX-SEED-Text-Instruct-1.5B`의 `config.json` 다운로드와 `/ai/copy/experiment?force_regen=true` HyperCLOVA 단독 실호출 모두 성공.
+
+**현재 `.env` 적용값**:
+```bash
+HF_TOKEN=<set>
+HYPERCLOVA_BASE_URL=http://127.0.0.1:11501/v1
+HYPERCLOVA_MODEL=naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B
+HYPERCLOVA_USE_DIRECT_API=false
+TEXT_WORKER_CMD="conda run -n sprint_high python tools/hyperclova_seed_openai_server.py"
+```
+
+**회귀 검증 명령**:
+```bash
+curl -s http://127.0.0.1:8010/ai/providers | python3 -m json.tool
+curl -sS --max-time 900 -X POST 'http://127.0.0.1:8010/ai/copy/experiment?force_regen=true' \
+  -H 'Content-Type: application/json' -d '{"providers":["hyperclova"]}' | python3 -m json.tool
+```
+
+**기대 결과**:
+- `/ai/providers`에서 HyperCLOVA model이 `HyperCLOVAX-SEED-Text-Instruct-1.5B`
+- copy experiment 결과에서 `provider: hyperclova`, `status: ok`, `copy.provider: hyperclova_x`
+
+<details>
+<summary>초기 연결 절차 기록</summary>
 
 **작업 순서**:
 1. HF 약관 승인: `https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B`
@@ -76,6 +99,8 @@ curl -s http://127.0.0.1:8010/health
 
 **VRAM**: FLUX ≈ 14GB + HyperCLOVA 1.5B ≈ 4GB = 18GB.  
 `GPU_WORKER_MODE=exclusive`이므로 text 요청 시 ComfyUI 자동 stop, 충돌 없음.
+
+</details>
 
 ---
 
@@ -133,7 +158,7 @@ conda run -n sprint_high pip install "trimesh[all]"
 
 ### 3-3. exclusive worker 전환 실검증
 
-HyperCLOVA SEED 연결(1-2) 완료 후 가능.
+HyperCLOVA SEED 연결(1-2)은 완료됐으므로 바로 실검증 가능.
 
 ```bash
 # ComfyUI active 상태에서 text 요청
@@ -184,6 +209,7 @@ systemctl is-active comfyui ollama
 
 # GPU worker 모드
 grep GPU_WORKER_MODE deskad_keyboard_demo/.env
+grep HYPERCLOVA_MODEL deskad_keyboard_demo/.env
 
 # 캐시 상태
 ls deskad_keyboard_demo/data/runtime/cache/text/ | wc -l
