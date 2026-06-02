@@ -1,19 +1,22 @@
-# DeskAd AI Studio - 다음 작업 계획 (2026-06-01 야간 2차 기준)
+# DeskAd AI Studio - 다음 작업 계획 (2026-06-01 야간 3차 기준)
 
 작성일: 2026-06-01  
-기준 브랜치: `main` (PR #6 + PR #9 모두 merge 완료)  
-직전 문서: `docs/next_work_2026-06-01-night.md` (이 문서로 대체)
+기준 브랜치: `main` (PR #6 + PR #9 merge, 자동 폴링 로컬 커밋 완료)  
+직전 문서: `docs/next_work_2026-06-01-night2.md` (이 문서로 대체)
 
 ---
 
 ## 0. 직전 완료 작업 요약
 
-| PR | 내용 | 상태 |
+| 항목 | 내용 | 상태 |
 |---|---|---|
-| #6 | GPU 런타임 캐시 + exclusive worker + picker UI + P0 회귀 픽스 | ✅ merged |
-| #9 | OpenAI 이미지 백엔드 + UI 반응형 개선 (PR #8 rebase) | ✅ merged |
+| PR #6 | GPU 런타임 캐시 + exclusive worker + picker UI + P0 회귀 픽스 | ✅ merged |
+| PR #9 | OpenAI 이미지 백엔드 + UI 반응형 개선 | ✅ merged |
+| P1 2-1 | 이미지 작업 자동 폴링 + 포스터 흐름 연결 | ✅ 구현 완료 (`3640000`) |
+| P0 1-2 | HyperCLOVA X SEED 1.5B 실연결 | ✅ HF gated 접근 + copy 실호출 완료 |
 
-**main 현재 커밋**: `4f3226e` (night2 문서 커밋, PR #9 merge commit은 `090df5e`)
+**로컬 main 현재 커밋**: `6f9f6f3` (`origin/main`보다 2 commits ahead)  
+**현재 미커밋 변경**: `tools/hyperclova_seed_openai_server.py`, night2/night3 문서 갱신
 
 ---
 
@@ -21,7 +24,11 @@
 
 ```bash
 cd /home/leetaeho/ai_07_high/deskad_keyboard_demo
-git checkout main && git pull origin main
+
+# 1. 미커밋 변경사항 확인
+git diff --stat
+
+# 2. 서버 상태 확인
 bash start.sh --restart
 curl -s http://127.0.0.1:8010/health
 ```
@@ -30,7 +37,20 @@ curl -s http://127.0.0.1:8010/health
 
 ## 1. P0 — 즉시
 
-### 1-1. HyperCLOVA X SEED 실제 연결 검증
+### 1-1. 자동 폴링 동작 검증
+
+구현은 로컬 커밋 완료. 브라우저 UI에서 pending 상태 자동 갱신 흐름은 직접 확인 필요.
+
+**검증 순서**:
+1. Streamlit `:8501` 접속
+2. 이미지 작업 제출 → "이미지 작업 자동 갱신 중 · {status} · N초" 캡션 표시 확인
+3. 포스터 버튼 disabled + 캡션 "이미지 작업이 완료되면 포스터 생성이 활성화됩니다." 확인
+4. 작업 완료 후 "이미지 작업 완료. 포스터 생성에 자동으로 연결됩니다." 토스트 확인
+5. 포스터 버튼 자동 활성화 확인
+
+---
+
+### 1-2. ~~HyperCLOVA X SEED 실제 연결 검증~~ ✅ 완료
 
 **현황**: 2026-06-01 추가 검증 완료. HF gated repo 약관 승인 후 `HyperCLOVAX-SEED-Text-Instruct-1.5B`의 `config.json` 다운로드와 `/ai/copy/experiment?force_regen=true` HyperCLOVA 단독 실호출 모두 성공.
 
@@ -43,24 +63,16 @@ HYPERCLOVA_USE_DIRECT_API=false
 TEXT_WORKER_CMD="conda run -n sprint_high python tools/hyperclova_seed_openai_server.py"
 ```
 
-**검증 결과**:
-- HF token user: `ikstre`
-- `curl -s http://127.0.0.1:8010/ai/providers`에서 HyperCLOVA model이 1.5B로 표시됨
-- `POST /ai/copy/experiment?force_regen=true` + `{"providers":["hyperclova"]}` 응답에서 `provider: hyperclova`, `status: ok`, `copy.provider: hyperclova_x` 확인
+**회귀 검증 명령**:
+```bash
+curl -s http://127.0.0.1:8010/ai/providers | python3 -m json.tool
+curl -sS --max-time 900 -X POST 'http://127.0.0.1:8010/ai/copy/experiment?force_regen=true' \
+  -H 'Content-Type: application/json' -d '{"providers":["hyperclova"]}' | python3 -m json.tool
+```
 
-**재현/회귀 검증 순서**:
-1. 서버 재시작:
-   ```bash
-   bash start.sh --restart
-   ```
-2. 확인:
-   ```bash
-   curl -s http://127.0.0.1:8010/ai/providers | python3 -m json.tool
-   curl -sS --max-time 900 -X POST 'http://127.0.0.1:8010/ai/copy/experiment?force_regen=true' \
-     -H 'Content-Type: application/json' -d '{"providers":["hyperclova"]}' | python3 -m json.tool
-   ```
-
-**남은 점검**: exclusive worker/idle unload 실검증은 3-2, 3-3에서 계속 진행.
+**기대 결과**:
+- `/ai/providers`에서 HyperCLOVA model이 `HyperCLOVAX-SEED-Text-Instruct-1.5B`
+- copy experiment 결과에서 `provider: hyperclova`, `status: ok`, `copy.provider: hyperclova_x`
 
 <details>
 <summary>초기 연결 절차 기록</summary>
@@ -92,41 +104,9 @@ TEXT_WORKER_CMD="conda run -n sprint_high python tools/hyperclova_seed_openai_se
 
 ---
 
-### 1-2. OpenAI 이미지 백엔드 실검증
-
-**현황**: `generate_openai_image_reference()` 코드 완성 (PR #9 merge). 실호출 미검증.
-
-**작업**:
-1. `.env`에 추가:
-   ```bash
-   OPENAI_API_KEY=<key>
-   OPENAI_IMAGE_MODEL=dall-e-3
-   IMAGE_MODEL_BACKEND=auto
-   ```
-2. `POST /ai/image/jobs` 호출 후 `backend_config.openai_image_model: set` 확인
-3. `POST /ai/poster` 응답에 `image_reference` 필드 존재, `local_image_reference` 미존재 확인
-4. ComfyUI 없이 OpenAI만으로 포스터 합성 end-to-end 검증
-
----
-
 ## 2. P1 — UX 개선
 
-### 2-1. 이미지 작업 자동 폴링 + 포스터 흐름 연결
-
-**현황**: 이미지 제출 후 결과 확인 수동. 포스터 버튼 활성화 조건 없음.
-
-**2026-06-01 추가 진행**:
-- `streamlit_app.py`에 이미지 job 자동 폴링 상태(`image_polling_enabled`, `image_poll_started_at`, timeout) 추가
-- 이미지 작업 생성 후 pending 상태면 3초 간격으로 `GET /ai/image/jobs/{job_id}` 자동 갱신
-- 이미지 작업 완료 전에는 포스터 생성 버튼 비활성화
-- `build_ad_payload()`가 완료된 image job만 `image_job_id`로 넘기도록 변경
-- 완료된 ComfyUI job으로 `/ai/poster` 호출 시 `image_embedded: true` 확인
-
-**구현 방향**:
-- `streamlit_app.py:refresh_image_job()` 확장
-- `st.empty()` 루프로 `GET /ai/image/jobs/{job_id}` 폴링, `status == "completed"` 시 자동 진행
-- timeout 처리 (최대 3분), ComfyUI 오류 상태 표시
-- cache hit job (`status: queued`)도 폴링 필요
+### 2-1. ~~이미지 작업 자동 폴링 + 포스터 흐름 연결~~ ✅ 완료
 
 ---
 
@@ -150,7 +130,24 @@ git clone https://github.com/naraku010/keyboard_layout /opt/shared_data/keyboard
 
 ## 3. P2 — 인프라
 
-### 3-1. STEP converter 설치
+### 3-1. OpenAI 이미지 백엔드 실검증
+
+**현황**: `generate_openai_image_reference()` 코드 완성 (PR #9 merge). 실호출 미검증.
+
+**작업**:
+1. `.env`에 추가:
+   ```bash
+   OPENAI_API_KEY=<key>
+   OPENAI_IMAGE_MODEL=dall-e-3
+   IMAGE_MODEL_BACKEND=auto
+   ```
+2. `POST /ai/image/jobs` 호출 후 `backend_config.openai_image_model: set` 확인
+3. `POST /ai/poster` 응답에 `image_reference` 필드 존재, `local_image_reference` 미존재 확인
+4. ComfyUI 없이 OpenAI만으로 포스터 합성 end-to-end 검증
+
+---
+
+### 3-2. STEP converter 설치
 
 ```bash
 conda run -n sprint_high pip install "trimesh[all]"
@@ -159,9 +156,9 @@ conda run -n sprint_high pip install "trimesh[all]"
 
 ---
 
-### 3-2. exclusive worker 전환 실검증
+### 3-3. exclusive worker 전환 실검증
 
-HyperCLOVA SEED 연결(1-1) 완료 후 가능.
+HyperCLOVA SEED 연결(1-2)은 완료됐으므로 바로 실검증 가능.
 
 ```bash
 # ComfyUI active 상태에서 text 요청
@@ -180,7 +177,7 @@ nvidia-smi  # VRAM 복귀 확인
 
 ---
 
-### 3-3. idle unload 실검증
+### 3-4. idle unload 실검증
 
 ```bash
 # 단기 테스트 (30초)
@@ -195,7 +192,7 @@ GPU_WORKER_IDLE_TIMEOUT_SECONDS=30 bash start.sh --restart
 
 | 항목 | 상태 |
 |---|---|
-| 모델 라우팅 실분리 (kanana/midm 독립 슬롯) | HyperCLOVA 연결(1-1) 후 의미 있음 |
+| 모델 라우팅 실분리 (kanana/midm 독립 슬롯) | HyperCLOVA 연결(1-2) 후 의미 있음 |
 | `product_name`에서 한국어 색상 키워드 추출 → `case_color` 기본값 동기화 | 선택 작업 |
 | API 응답 캐싱 (`/ai/providers` TTL 60s, `/layouts` TTL 300s) | 낮은 우선순위 |
 
@@ -212,6 +209,7 @@ systemctl is-active comfyui ollama
 
 # GPU worker 모드
 grep GPU_WORKER_MODE deskad_keyboard_demo/.env
+grep HYPERCLOVA_MODEL deskad_keyboard_demo/.env
 
 # 캐시 상태
 ls deskad_keyboard_demo/data/runtime/cache/text/ | wc -l

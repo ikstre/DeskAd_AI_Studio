@@ -4,7 +4,7 @@
 프로젝트 경로: `/home/leetaeho/ai_07_high/deskad_keyboard_demo`  
 직전 문서: `docs/project_handoff_2026-06-01-night.md`  
 작업 브랜치: `feat/pr9-openai-image-ui-merge` (main에 merge 완료)  
-**현재 main 최신 커밋: `090df5e` (Merge PR #9)**
+**현재 main 최신 커밋: `4f3226e` (night2 문서 커밋, PR #9 merge commit은 `090df5e`)**
 
 ---
 
@@ -98,7 +98,7 @@ PR #6(merged)과 PR #8(openai-image-ui-fix)을 분석해 충돌을 해결한 뒤
 ### 3-5. HyperCLOVA X SEED 서버 (PR #6)
 
 `tools/hyperclova_seed_openai_server.py` — Hugging Face weight를 OpenAI-compatible API로 서빙 (165줄).  
-**현재 미연결** — HF 약관 승인 + `HF_TOKEN` 설정 필요. 연결 방법은 이슈 #1 참조.
+**2026-06-01 추가 검증 완료** — HF 약관 승인 + `HF_TOKEN` 설정 후 `HyperCLOVAX-SEED-Text-Instruct-1.5B` 실호출 성공. `tools/hyperclova_seed_openai_server.py`는 `HYPERCLOVA_SEED_MODEL` 또는 `HYPERCLOVA_MODEL` 환경변수를 읽어 모델을 선택한다.
 
 ---
 
@@ -123,7 +123,7 @@ PR #6(merged)과 PR #8(openai-image-ui-fix)을 분석해 충돌을 해결한 뒤
 | Streamlit | `:8501` |
 | Ollama | `:11434` (qwen2.5:7b) |
 | ComfyUI | `:8188` (FLUX.1 schnell fp8) |
-| HyperCLOVA SEED | `:11501` — 미기동 (TEXT_WORKER_CMD 미설정) |
+| HyperCLOVA SEED | `:11501` — `TEXT_WORKER_CMD`로 on-demand 기동, 1.5B 실호출 검증 완료 |
 | GPU_WORKER_MODE | `exclusive` (`.env` 설정 중) |
 | GPU_WORKER_IDLE_TIMEOUT_SECONDS | `600` |
 | 캐시 경로 | `data/runtime/cache/{text,image}/` |
@@ -147,6 +147,8 @@ PR #6(merged)과 PR #8(openai-image-ui-fix)을 분석해 충돌을 해결한 뒤
 | `scan_secrets --all` (119 파일) | ✅ clean |
 | PR #9 생성 + merge | ✅ `090df5e` |
 | 충돌 해결 (streamlit_app.py 1곳) | ✅ 양 PR 의도 보존 |
+| HF gated repo 1.5B 접근 | ✅ `config.json` 다운로드 성공 |
+| HyperCLOVA 1.5B copy 실호출 | ✅ `/ai/copy/experiment?force_regen=true` 응답 `status: ok` |
 
 ---
 
@@ -156,7 +158,7 @@ PR #6(merged)과 PR #8(openai-image-ui-fix)을 분석해 충돌을 해결한 뒤
 
 ### P0 (즉시)
 - **서버 재시작** — main pull 후 `bash start.sh --restart` 실행
-- **HyperCLOVA X SEED 실연결** — HF 약관 승인 + `.env` 설정 후 실호출 검증
+- **HyperCLOVA X SEED 실연결** — 완료. 다음에는 회귀 검증만 수행
 
 ### P1 (UX)
 - 이미지 작업 자동 폴링 + 포스터 흐름 연결
