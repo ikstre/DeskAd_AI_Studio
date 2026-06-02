@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import html
 import os
+import re
 import time
 from pathlib import Path
 
@@ -569,7 +570,32 @@ def fetch_text_asset(url: str) -> str:
     return response.text
 
 
-def responsive_svg_document(svg: str) -> str:
+# 포스터 미리보기 표시 폭(px). iframe 높이를 이 폭 × SVG 종횡비로 잡아
+# 1:1 포스터 하단이 잘리지 않게 한다(성현 문서 "남은 확인 사항"). 결과 컬럼이
+# 더 넓어도 포스터는 이 폭으로 가운데 정렬되어 전체가 보인다.
+POSTER_PREVIEW_MAX_WIDTH = 820
+
+
+def svg_aspect_ratio(svg: str) -> float:
+    """SVG의 height/width 비율. viewBox > width/height 속성 순, 기본 1.0(정사각)."""
+    match = re.search(r'viewBox=["\']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)', svg)
+    if match:
+        width, height = float(match.group(1)), float(match.group(2))
+        if width > 0:
+            return height / width
+    width_match = re.search(r'<svg[^>]*\bwidth=["\']([\d.]+)', svg)
+    height_match = re.search(r'<svg[^>]*\bheight=["\']([\d.]+)', svg)
+    if width_match and height_match and float(width_match.group(1)) > 0:
+        return float(height_match.group(1)) / float(width_match.group(1))
+    return 1.0
+
+
+def poster_preview_height(svg: str, max_width: int = POSTER_PREVIEW_MAX_WIDTH) -> int:
+    """잘림 없이 포스터 전체를 담는 iframe 높이(px)."""
+    return round(max_width * svg_aspect_ratio(svg)) + 16
+
+
+def responsive_svg_document(svg: str, max_width: int = POSTER_PREVIEW_MAX_WIDTH) -> str:
     return f"""
     <!doctype html>
     <html>
@@ -585,6 +611,8 @@ def responsive_svg_document(svg: str) -> str:
           }}
           .poster-frame {{
             width: 100%;
+            max-width: {max_width}px;
+            margin: 0 auto;
             box-sizing: border-box;
             padding: 0;
           }}
@@ -1472,7 +1500,12 @@ with result_col:
                 elif image_reference.get("error"):
                     badge += "  ·  이미지 생성 오류"
                 st.caption(badge)
-                components.html(responsive_svg_document(fetch_text_asset(poster["poster_url"])), height=760, scrolling=False)
+                poster_svg = fetch_text_asset(poster["poster_url"])
+                components.html(
+                    responsive_svg_document(poster_svg),
+                    height=poster_preview_height(poster_svg),
+                    scrolling=False,
+                )
                 with st.expander("이미지 생성 프롬프트", expanded=False):
                     st.write(poster["image_prompt"])
                 if image_reference:
