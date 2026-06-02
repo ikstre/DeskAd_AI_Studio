@@ -1,10 +1,63 @@
 from __future__ import annotations
 
+import logging
+import os
+import random
+import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from uuid import uuid4
 
 import requests
+
+logger = logging.getLogger(__name__)
+
+# Transient HTTP statuses worth retrying. Non-retryable 4xx (400/401/403/404/422)
+# fail fast so the caller can fall back to the next provider immediately.
+_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
+
+def _retry_settings() -> tuple[int, float, float]:
+    max_retries = max(0, int(os.getenv("LLM_MAX_RETRIES", "3")))
+    base_backoff = max(0.0, float(os.getenv("LLM_RETRY_BACKOFF_SECONDS", "0.5")))
+    max_backoff = max(base_backoff, float(os.getenv("LLM_RETRY_MAX_BACKOFF_SECONDS", "8")))
+    return max_retries, base_backoff, max_backoff
+
+
+def _post_with_retry(url: str, *, headers: dict, json: dict, timeout: int, provider: str) -> requests.Response:
+    """POST with exponential backoff + jitter on transient failures.
+
+    Retries on connection errors, timeouts, and 5xx/429-class statuses; raises
+    immediately on non-retryable 4xx so the caller can fall back to the next provider.
+    """
+    max_retries, base_backoff, max_backoff = _retry_settings()
+    session = requests.Session()
+    session.trust_env = False
+    last_error: BaseException | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = session.post(url, headers=headers, json=json, timeout=timeout)
+            if response.status_code in _RETRYABLE_STATUS:
+                last_error = requests.HTTPError(
+                    f"{response.status_code} {response.reason}", response=response
+                )
+            else:
+                response.raise_for_status()
+                return response
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_error = exc
+        if attempt >= max_retries:
+            break
+        delay = min(max_backoff, base_backoff * (2 ** attempt))
+        delay += random.uniform(0.0, delay)  # full jitter
+        logger.warning(
+            "[%s] LLM 요청 실패 — %.2fs 후 재시도 %d/%d (%s)",
+            provider, delay, attempt + 1, max_retries, last_error,
+        )
+        time.sleep(delay)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"[{provider}] request failed with no response")
 
 
 def normalize_chat_completions_url(base_url: str) -> str:
@@ -64,15 +117,13 @@ class ChatCompletionAdapter:
         if self.json_response_format:
             body["response_format"] = {"type": "json_object"}
 
-        session = requests.Session()
-        session.trust_env = False
-        response = session.post(
+        response = _post_with_retry(
             normalize_chat_completions_url(self.base_url),
             headers=headers,
             json=body,
             timeout=timeout,
+            provider=self.name,
         )
-        response.raise_for_status()
         result = response.json()
         return result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
 
@@ -143,10 +194,9 @@ class HyperClovaDirectAdapter:
             "includeAiFilters": True,
         }
 
-        session = requests.Session()
-        session.trust_env = False
-        response = session.post(self._endpoint(), headers=headers, json=body, timeout=timeout)
-        response.raise_for_status()
+        response = _post_with_retry(
+            self._endpoint(), headers=headers, json=body, timeout=timeout, provider=self.name
+        )
         result = response.json() or {}
         message = (result.get("result") or {}).get("message") or {}
         content = message.get("content") or ""
