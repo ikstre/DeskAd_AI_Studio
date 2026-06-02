@@ -3,32 +3,21 @@ from __future__ import annotations
 
 import base64
 import html
-import os
 import time
 from pathlib import Path
 
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-
-APP_DIR = Path(__file__).resolve().parent
-
-
-def load_env_file(path: Path) -> None:
-    if not path.exists():
-        return
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
-load_env_file(APP_DIR / ".env")
-API_BASE = os.getenv("DESKAD_API_BASE", "http://127.0.0.1:8010").rstrip("/")
-PUBLIC_API_BASE = os.getenv("DESKAD_PUBLIC_API_BASE", API_BASE).rstrip("/")
+from ui_api import (
+    api_get,
+    api_post,
+    fetch_binary_data_url,
+    fetch_text_asset,
+    poster_preview_height,
+    reference_thumbnail_bytes,
+    responsive_svg_document,
+)
 
 
 st.set_page_config(
@@ -226,6 +215,23 @@ st.markdown(
         color: #ffffff;
         font-weight: 700;
         font-size: 14px;
+      }
+      .reference-svg {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 6px;
+        height: 150px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .reference-svg svg {
+        max-width: 100%;
+        max-height: 138px;
+        height: auto;
+        width: auto;
       }
     </style>
     """,
@@ -536,71 +542,35 @@ FALLBACK_ASSETS = [
 ]
 
 
-def api_get(path: str, timeout: int = 10) -> dict:
-    response = requests.get(f"{API_BASE}{path}", timeout=timeout)
-    response.raise_for_status()
-    return response.json()
-
-
-def api_post(path: str, payload: dict, timeout: int = 30) -> dict:
-    response = requests.post(f"{API_BASE}{path}", json=payload, timeout=timeout)
-    response.raise_for_status()
-    return response.json()
-
-
-def to_internal_api_url(url: str) -> str:
-    if PUBLIC_API_BASE != API_BASE and url.startswith(PUBLIC_API_BASE):
-        return API_BASE + url[len(PUBLIC_API_BASE):]
-    return url
-
-
-@st.cache_data(ttl=300)
-def fetch_binary_data_url(url: str, mime_type: str) -> str:
-    response = requests.get(to_internal_api_url(url), timeout=30)
-    response.raise_for_status()
-    encoded = base64.b64encode(response.content).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
-
-
-@st.cache_data(ttl=300)
-def fetch_text_asset(url: str) -> str:
-    response = requests.get(to_internal_api_url(url), timeout=30)
-    response.raise_for_status()
-    return response.text
-
-
-def responsive_svg_document(svg: str) -> str:
-    return f"""
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <style>
-          html, body {{
-            margin: 0;
-            width: 100%;
-            min-height: 100%;
-            background: transparent;
-            overflow: hidden;
-          }}
-          .poster-frame {{
-            width: 100%;
-            box-sizing: border-box;
-            padding: 0;
-          }}
-          .poster-frame svg {{
-            display: block;
-            width: 100%;
-            height: auto;
-            max-width: 100%;
-          }}
-        </style>
-      </head>
-      <body>
-        <div class="poster-frame">{svg}</div>
-      </body>
-    </html>
-    """
+def render_reference_grid(references: list[dict], columns: int = 4) -> None:
+    """Thumbnail grid of downloaded reference assets. Raster files render via
+    st.image (downscaled), SVGs are inlined; layout uses st.columns so it
+    renders reliably without HTML-sanitizer / data-URI concerns."""
+    cols = st.columns(columns)
+    for idx, item in enumerate(references):
+        url = item.get("url")
+        if not url:
+            continue
+        ext = str(item.get("extension", "")).lower()
+        label = item.get("label") or Path(str(item.get("path", ""))).name or "reference"
+        license_text = item.get("license") or "라이선스 확인"
+        with cols[idx % columns]:
+            try:
+                if ext == ".svg":
+                    if int(item.get("size_bytes", 0) or 0) <= 400_000:
+                        st.markdown(
+                            f'<div class="reference-svg">{fetch_text_asset(url)}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption("[SVG · 원본 큼, 드롭다운에서 선택]")
+                elif ext in (".png", ".jpg", ".jpeg", ".webp"):
+                    st.image(reference_thumbnail_bytes(url), use_container_width=True)
+                else:
+                    st.caption(f"[{ext.lstrip('.').upper() or 'FILE'}]")
+            except Exception:
+                st.caption("(미리보기 불가)")
+            st.caption(f"{label} · {license_text}")
 
 
 @st.cache_data(ttl=15)
@@ -1151,6 +1121,7 @@ with left_col:
                 downloaded_refs = [item for item in references if item.get("downloaded")]
                 st.caption(f"노션 리서치 기반 레퍼런스 {len(references)}개 · 다운로드 완료 {len(downloaded_refs)}개")
                 if downloaded_refs:
+                    render_reference_grid(downloaded_refs)
                     ref_options = {item["path"]: item for item in downloaded_refs if item.get("path")}
                     if st.session_state.selected_reference_path not in ref_options:
                         st.session_state.selected_reference_path = next(iter(ref_options), None)
@@ -1472,7 +1443,12 @@ with result_col:
                 elif image_reference.get("error"):
                     badge += "  ·  이미지 생성 오류"
                 st.caption(badge)
-                components.html(responsive_svg_document(fetch_text_asset(poster["poster_url"])), height=760, scrolling=False)
+                poster_svg = fetch_text_asset(poster["poster_url"])
+                components.html(
+                    responsive_svg_document(poster_svg),
+                    height=poster_preview_height(poster_svg),
+                    scrolling=False,
+                )
                 with st.expander("이미지 생성 프롬프트", expanded=False):
                     st.write(poster["image_prompt"])
                 if image_reference:
