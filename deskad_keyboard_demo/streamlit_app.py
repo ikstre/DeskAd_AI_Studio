@@ -228,6 +228,23 @@ st.markdown(
         font-weight: 700;
         font-size: 14px;
       }
+      .reference-svg {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 6px;
+        height: 150px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .reference-svg svg {
+        max-width: 100%;
+        max-height: 138px;
+        height: auto;
+        width: auto;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -568,6 +585,56 @@ def fetch_text_asset(url: str) -> str:
     response = requests.get(to_internal_api_url(url), timeout=30)
     response.raise_for_status()
     return response.text
+
+
+@st.cache_data(ttl=600)
+def reference_thumbnail_bytes(url: str) -> bytes:
+    """Downscaled PNG thumbnail for a raster reference, cached per url so
+    Streamlit reruns don't refetch the (sometimes multi-MB) originals."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    response = requests.get(to_internal_api_url(url), timeout=30)
+    response.raise_for_status()
+    image = Image.open(BytesIO(response.content))
+    image.thumbnail((320, 320))
+    if image.mode not in ("RGB", "RGBA", "L"):
+        image = image.convert("RGB")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def render_reference_grid(references: list[dict], columns: int = 4) -> None:
+    """Thumbnail grid of downloaded reference assets. Raster files render via
+    st.image (downscaled), SVGs are inlined; layout uses st.columns so it
+    renders reliably without HTML-sanitizer / data-URI concerns."""
+    cols = st.columns(columns)
+    for idx, item in enumerate(references):
+        url = item.get("url")
+        if not url:
+            continue
+        ext = str(item.get("extension", "")).lower()
+        label = item.get("label") or Path(str(item.get("path", ""))).name or "reference"
+        license_text = item.get("license") or "라이선스 확인"
+        with cols[idx % columns]:
+            try:
+                if ext == ".svg":
+                    if int(item.get("size_bytes", 0) or 0) <= 400_000:
+                        st.markdown(
+                            f'<div class="reference-svg">{fetch_text_asset(url)}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption("[SVG · 원본 큼, 드롭다운에서 선택]")
+                elif ext in (".png", ".jpg", ".jpeg", ".webp"):
+                    st.image(reference_thumbnail_bytes(url), use_container_width=True)
+                else:
+                    st.caption(f"[{ext.lstrip('.').upper() or 'FILE'}]")
+            except Exception:
+                st.caption("(미리보기 불가)")
+            st.caption(f"{label} · {license_text}")
 
 
 # 포스터 미리보기 표시 폭(px). iframe 높이를 이 폭 × SVG 종횡비로 잡아
@@ -1179,6 +1246,7 @@ with left_col:
                 downloaded_refs = [item for item in references if item.get("downloaded")]
                 st.caption(f"노션 리서치 기반 레퍼런스 {len(references)}개 · 다운로드 완료 {len(downloaded_refs)}개")
                 if downloaded_refs:
+                    render_reference_grid(downloaded_refs)
                     ref_options = {item["path"]: item for item in downloaded_refs if item.get("path")}
                     if st.session_state.selected_reference_path not in ref_options:
                         st.session_state.selected_reference_path = next(iter(ref_options), None)
