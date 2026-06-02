@@ -98,7 +98,7 @@ GPU 작업을 줄이려 텍스트/이미지 결과를 디스크에 캐시한다.
 - **이미지 캐시는 `image_b64` 바이너리를 제외**하고 메타데이터만 저장 (`put_image_cache`가 `image_b64` 키 drop) → 대용량 이미지 바이트가 디스크에 중복 적재되지 않음.
 - 기록 시 `chmod 0o600` (§2-4) + `.gitignore`의 `data/runtime/` 로 커밋 차단.
 
-> ⚠️ 현재 캐시 디렉터리에는 자동 eviction이 없어 장기 운영 시 무한 누적될 수 있다 (디스크 고갈 리스크). lifecycle/LRU 정리는 후속 작업 대상.
+> 캐시 디렉터리는 쓰기마다 정리된다: TTL(`GPU_WORKER_CACHE_MAX_AGE_DAYS`, 기본 30일) 만료분을 먼저 제거하고, `GPU_WORKER_CACHE_MAX_ENTRIES`(기본 500) 초과분을 LRU(mtime 기준, 읽기 시 갱신)로 제거 → 장기 운영 시 디스크 무한 누적 방지 (`_prune_dir` / `prune_caches`). 각 값 ≤0이면 해당 차원 비활성화.
 
 ### 2-8. GPU 워커 수명주기 & 리소스 고갈 완화 (`backend/runtime_workers.py`)
 
