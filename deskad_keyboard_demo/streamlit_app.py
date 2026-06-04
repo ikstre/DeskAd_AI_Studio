@@ -10,16 +10,43 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from ppt_export import build_poster_pptx
-from ui_api import (
+from ui.api_client import (
     api_get,
     api_post,
+    fetch_ai_providers,
     fetch_binary_data_url,
+    fetch_desk_assets,
+    fetch_layout_ids,
+    fetch_model_library,
+    fetch_reference_assets,
+    fetch_security_config,
     fetch_text_asset,
     poster_preview_height,
     reference_thumbnail_bytes,
     responsive_svg_document,
 )
 from ui_steps import render_step_input_panel
+from ui.constants import (
+    CASE_FINISH_LABELS,
+    IMAGE_JOB_TERMINAL_STATUSES,
+    KEYBOARD_MODEL_DEFAULTS,
+    KEYBOARD_SIZE_INFO,
+    KEYCAP_PROFILE_LABELS,
+    MONITOR_ARM_LABELS,
+    MONITOR_SIZES,
+    MOUNT_TYPE_LABELS,
+    PCB_COLOR_LABELS,
+    PLATE_MATERIAL_LABELS,
+    POSTER_TEMPLATE_LABELS,
+    POSTER_TEMPLATE_THUMBNAILS,
+    PROVIDER_LABELS,
+    STEP_LABELS,
+    SWITCH_FAMILY_LABELS,
+    SWITCH_STEM_LABELS,
+)
+from ui.defaults import DEFAULTS
+from ui.styles import render_base_layout_styles, render_ui_theme_styles
+from ui.theme import THEME_LABELS, THEME_OPTIONS
 
 
 st.set_page_config(
@@ -29,500 +56,7 @@ st.set_page_config(
 )
 
 
-st.markdown(
-    """
-    <style>
-      .stApp { background: #f6f8fc; }
-      .block-container {
-        max-width: min(97vw, 2120px);
-        padding-top: 2.5rem;
-        padding-bottom: 2.5rem;
-        padding-left: 2.75rem;
-        padding-right: 2.75rem;
-      }
-
-      [data-testid="stSidebar"] {
-        width: 280px !important;
-        min-width: 280px !important;
-      }
-
-      [data-testid="stSidebar"] > div {
-        width: 280px !important;
-      }
-
-      .section-label {
-        font-size: 12px;
-        line-height: 1;
-        letter-spacing: 0;
-        color: #6b7280;
-        margin-bottom: 6px;
-      }
-
-      .metric-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        border: 1px solid rgba(148, 163, 184, 0.28);
-        border-radius: 999px;
-        font-size: 12px;
-        color: #64748b;
-        margin-right: 6px;
-      }
-
-      iframe {
-        border-radius: 8px;
-      }
-
-      .step-progress {
-        display: flex;
-        align-items: center;
-        gap: 0;
-        margin: 4px 0 12px 0;
-        padding: 12px 16px;
-        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-        border: 1px solid rgba(148, 163, 184, 0.24);
-        border-radius: 14px;
-      }
-      .step-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 14px 6px 6px;
-        border-radius: 999px;
-        font-size: 13px;
-        line-height: 1.1;
-        border: 1px solid transparent;
-        white-space: nowrap;
-      }
-      .step-chip .num {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-        background: #ffffff;
-        border: 1px solid currentColor;
-      }
-      .step-chip.done {
-        color: #047857;
-        background: rgba(16, 185, 129, 0.10);
-        border-color: rgba(16, 185, 129, 0.32);
-      }
-      .step-chip.done .num {
-        background: #047857;
-        color: #ffffff;
-        border-color: #047857;
-      }
-      .step-chip.current {
-        color: #1d4ed8;
-        background: rgba(59, 130, 246, 0.12);
-        border-color: rgba(59, 130, 246, 0.42);
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
-        font-weight: 600;
-      }
-      .step-chip.current .num {
-        background: #1d4ed8;
-        color: #ffffff;
-        border-color: #1d4ed8;
-      }
-      .step-chip.pending {
-        color: #64748b;
-        background: rgba(148, 163, 184, 0.10);
-        border-color: rgba(148, 163, 184, 0.28);
-      }
-      .step-connector {
-        flex: 1 1 24px;
-        height: 2px;
-        margin: 0 8px;
-        background: rgba(148, 163, 184, 0.28);
-        border-radius: 999px;
-      }
-      .step-connector.done {
-        background: rgba(16, 185, 129, 0.55);
-      }
-
-      .poster-thumb-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
-        margin-top: 8px;
-      }
-      .poster-thumb {
-        border: 1px solid rgba(148, 163, 184, 0.32);
-        border-radius: 10px;
-        padding: 6px 8px 4px 8px;
-        background: #ffffff;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
-      }
-      .poster-thumb.active {
-        border-color: #1d4ed8;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.22);
-      }
-      .poster-thumb .ptitle {
-        font-size: 11px;
-        font-weight: 600;
-        color: #334155;
-        margin-bottom: 2px;
-        letter-spacing: -0.1px;
-      }
-      .poster-thumb.active .ptitle {
-        color: #1d4ed8;
-      }
-      .poster-thumb svg {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-
-      .ad-preview-card {
-        min-height: 220px;
-        padding: 30px 32px;
-        border: 1px solid #e8edf4;
-        border-radius: 16px;
-        background: linear-gradient(135deg, #ffffff 0%, #dbeafe 160%);
-        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 6px 20px rgba(15, 23, 42, 0.06);
-        color: #1f2937;
-      }
-      .ad-preview-card h3 {
-        margin: 0 0 14px 0;
-        font-size: 26px;
-        line-height: 1.25;
-        letter-spacing: 0;
-      }
-      .ad-preview-card .subcopy {
-        margin: 0 0 18px 0;
-        font-size: 17px;
-        line-height: 1.65;
-        color: #475569;
-      }
-      .ad-preview-card ul {
-        margin: 0 0 18px 20px;
-        padding: 0;
-      }
-      .ad-preview-card li {
-        margin-bottom: 8px;
-        line-height: 1.55;
-      }
-      .ad-preview-card .meta {
-        color: #64748b;
-        font-size: 14px;
-      }
-      .ad-preview-card .cta {
-        display: inline-block;
-        margin-top: 16px;
-        padding: 10px 18px;
-        border-radius: 999px;
-        background: #3b82f6;
-        color: #ffffff;
-        font-weight: 700;
-        font-size: 14px;
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.30);
-      }
-      .reference-svg {
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 6px;
-        height: 150px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-      }
-      .reference-svg svg {
-        max-width: 100%;
-        max-height: 138px;
-        height: auto;
-        width: auto;
-      }
-
-      /* CTA 강조 (오늘의집 "구매" 자리 → 우리는 "광고 생성") */
-      .stButton > button[kind="primary"] {
-        border-radius: 999px;
-        font-weight: 700;
-        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.32);
-      }
-      .stDownloadButton > button {
-        border-radius: 999px;
-        font-weight: 700;
-      }
-
-      /* 밝은 파스텔 카드 그림자 */
-      .step-progress { box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.05); }
-      .poster-thumb { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
-
-      /* 다크모드 적응형 — OS가 다크면 Streamlit 전체(사이드바/헤더/선택창)+카드를 어둡게 */
-      @media (prefers-color-scheme: dark) {
-        .stApp, [data-testid="stMain"], [data-testid="stAppViewContainer"] { background: #0e1117; }
-        [data-testid="stHeader"], [data-testid="stToolbar"] { background: rgba(14, 17, 23, 0.92); }
-        [data-testid="stSidebar"] { background: #161b26; border-right: 1px solid #2b3648; }
-        .stApp, .stMarkdown, [data-testid="stSidebar"], [data-testid="stWidgetLabel"],
-        label, h1, h2, h3, h4, h5, h6, p { color: #e6edf3; }
-        /* 입력/선택 위젯 */
-        [data-baseweb="select"] > div, [data-baseweb="input"],
-        .stTextInput input, .stTextArea textarea, .stNumberInput input,
-        [data-baseweb="base-input"] {
-          background: #1a2130 !important; color: #e6edf3 !important; border-color: #2b3648 !important;
-        }
-        [data-baseweb="popover"], [data-baseweb="menu"], [role="listbox"] {
-          background: #1a2130 !important; color: #e6edf3 !important;
-        }
-        [data-testid="stTabs"] button[role="tab"] { color: #cbd5e1; }
-        div[data-testid="stExpander"] details { background: #161b26; border-color: #2b3648; }
-        [data-testid="stForm"], div[data-testid="stVerticalBlockBorderWrapper"] { border-color: #2b3648; }
-        /* 커스텀 카드 */
-        .ad-preview-card {
-          background: linear-gradient(135deg, #1b2230 0%, #1e3a5f 170%);
-          border-color: #2b3648;
-          color: #e8edf4;
-        }
-        .ad-preview-card .subcopy { color: #cbd5e1; }
-        .ad-preview-card li { color: #dbe3ee; }
-        .ad-preview-card .meta { color: #94a3b8; }
-        .metric-chip { background: #161b26; color: #cbd5e1; border-color: #2b3648; }
-        .poster-thumb { background: #161b26; border-color: #2b3648; }
-        .poster-thumb .ptitle { color: #cbd5e1; }
-        .reference-svg { background: #161b26; border-color: #2b3648; }
-        .step-progress { background: #161b26; border-color: #2b3648; }
-        .step-chip.pending { background: #1e2530; color: #94a3b8; border-color: #2b3648; }
-        .section-label { color: #94a3b8 !important; }
-        /* 버튼(secondary/download/form) — primary 파랑은 유지 */
-        .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
-          background: #1a2130; color: #e6edf3; border-color: #2b3648;
-        }
-        .stButton > button[kind="primary"] {
-          background: #3b82f6 !important; color: #ffffff !important; border-color: #3b82f6 !important;
-        }
-        .stButton > button:hover, .stDownloadButton > button:hover {
-          border-color: #3b82f6; color: #ffffff;
-        }
-        /* 드롭다운/셀렉트 펼침(커튼형 메뉴)과 옵션 */
-        ul[role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] > div {
-          background: #1a2130 !important;
-        }
-        ul[role="listbox"] li, li[role="option"], [data-baseweb="menu"] li {
-          background: #1a2130 !important; color: #e6edf3 !important;
-        }
-        li[role="option"]:hover, ul[role="listbox"] li:hover { background: #2b3648 !important; }
-        /* expander(접이식) 헤더/본문 */
-        [data-testid="stExpander"] summary { background: #161b26 !important; color: #e6edf3 !important; }
-        [data-testid="stExpander"] details { background: #161b26 !important; }
-        details summary, summary span, summary p { color: #e6edf3 !important; }
-        /* multiselect 태그 / radio·checkbox 라벨 */
-        span[data-baseweb="tag"] { background: #2b3648 !important; color: #e6edf3 !important; }
-        [data-testid="stWidgetLabel"] p, .stRadio label, .stCheckbox label { color: #cbd5e1 !important; }
-        /* 3D 셋업 등의 코드/JSON 블록 */
-        [data-testid="stJson"], [data-testid="stJson"] > div,
-        [data-testid="stCode"], [data-testid="stCodeBlock"], pre, code {
-          background: #161b26 !important;
-        }
-        [data-testid="stJson"] *, [data-testid="stCode"] *, pre, code { color: #e6edf3 !important; }
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-STEP_LABELS = {
-    1: "상품 정보",
-    2: "도면/제품 데이터",
-    3: "가상 셋업",
-    4: "광고 콘텐츠",
-}
-
-
-DEFAULTS = {
-    "step": 1,
-    "step_selector": 1,
-    "product_name": "크림 베이지 65% 커스텀 키보드",
-    "product_type": "커스텀 키보드",
-    "price": "189,000원",
-    "target_channel": "인스타그램",
-    "target_customer": "깔끔한 데스크 셋업을 원하는 직장인",
-    "selling_point": "조용한 타건감, 크림 톤 키캡, 작은 책상에도 잘 맞는 65% 배열",
-    "layout": "65",
-    "product_library": "keyboard_layout 샘플",
-    "keyboard_model": "Qwertykeys Neo65",
-    "drawing_upload_mode": "샘플 JSON 사용",
-    "theme": "minimal",
-    "case_color": "#c8c1b2",
-    "keycap_color": "#f4ead7",
-    "accent_keycap_color": "#6f8faf",
-    "deskmat_color": "#1f2937",
-    "desk_color": "#d8b892",
-    "mouse_color": "#f7f7f2",
-    "case_finish": "anodized",
-    "plate_material": "aluminum",
-    "pcb_color": "black",
-    "switch_stem": "red",
-    "switch_family": "mx",
-    "keycap_profile": "cherry",
-    "mount_type": "top_mount",
-    "show_internals": False,
-    "monitor_arm_style": "single",
-    "desk_preset": "120 x 60 cm",
-    "desk_width": 120.0,
-    "desk_depth": 60.0,
-    "monitor_size": "27",
-    "asset_selection": ["mouse", "monitor", "monitor_arm", "desk_lamp", "plant"],
-    "camera": "perspective",
-    "model_url": None,
-    "model_meta": None,
-    "uploaded_model_url": None,
-    "uploaded_model_meta": None,
-    "library_model_path": None,
-    "selected_reference_path": None,
-    "copy_result": None,
-    "copy_experiment_result": None,
-    "copy_selected_provider": None,
-    "poster_result": None,
-    "image_job_result": None,
-    "image_quality_report": None,
-    "image_polling_enabled": False,
-    "image_poll_started_at": None,
-    "image_poll_timeout_seconds": 180,
-    "ad_tone": "감성형",
-    "image_ratio": "1:1",
-    "extra_request": "깔끔하고 고급스러운 데스크셋업 광고 느낌",
-    "poster_template": "minimal_card",
-}
-
-CASE_FINISH_LABELS = {
-    "anodized": "아노다이징 알루미늄 (반광택)",
-    "matte": "무광 페인트",
-    "polycarbonate": "폴리카보네이트 (반투명톤)",
-    "wood": "원목 마감",
-}
-
-PLATE_MATERIAL_LABELS = {
-    "aluminum": "알루미늄 (단단·청량한 타건)",
-    "brass": "황동 (묵직·차분)",
-    "pom": "POM (탄성·부드러움)",
-    "fr4": "FR4 글래스 (밸런스)",
-    "carbon": "카본 (가벼움·드라이)",
-    "polycarbonate": "폴리카보네이트 (탄성·부드러움)",
-}
-
-PCB_COLOR_LABELS = {
-    "black": "블랙 PCB",
-    "red": "레드 PCB",
-    "blue": "블루 PCB",
-    "green": "그린 PCB",
-    "white": "화이트 PCB",
-}
-
-SWITCH_STEM_LABELS = {
-    "red": "Red (Linear, 가벼움)",
-    "yellow": "Yellow (Linear, 부드러움)",
-    "brown": "Brown (Tactile, 사무용)",
-    "blue": "Blue (Clicky, 또렷)",
-    "clear": "Clear (Heavy Tactile)",
-    "silent_red": "Silent Red (정음)",
-    "tactile_purple": "Holy Panda 계열 (Tactile)",
-    "linear_black": "Black (Linear, 무거움)",
-}
-
-SWITCH_FAMILY_LABELS = {
-    "mx": "MX 호환",
-    "box": "BOX 구조",
-    "holy_panda": "Holy Panda 계열",
-    "topre": "Topre 러버돔",
-}
-
-KEYCAP_PROFILE_LABELS = {
-    "cherry": "Cherry (낮은 스텝스컬프)",
-    "oem": "OEM (기본 높이)",
-    "xda": "XDA (균일 저상)",
-    "sa": "SA (높은 레트로)",
-    "mda": "MDA (둥근 중간 높이)",
-}
-
-MOUNT_TYPE_LABELS = {
-    "top_mount": "Top mount",
-    "tray_mount": "Tray mount",
-    "gasket_mount": "Gasket mount",
-    "o_ring_mount": "O-ring mount",
-}
-
-MONITOR_ARM_LABELS = {
-    "single": "싱글 암 (직선)",
-    "double_joint": "더블 조인트 (꺾임)",
-}
-
-POSTER_TEMPLATE_LABELS = {
-    "minimal_card": "Minimal Card (제품 강조)",
-    "grid_three": "Grid 3컷 (라이프스타일)",
-    "feature_focus": "Feature Focus (스펙 강조)",
-    "promo_banner": "Promo Banner (할인/광고)",
-}
-
-PROVIDER_LABELS = {
-    "openai": "OpenAI",
-    "hyperclova": "HyperCLOVA",
-    "kanana": "Kanana",
-    "midm": "Mi:dm",
-    "local": "Local",
-    "fallback": "Fallback",
-}
-
-# 각 템플릿의 실제 backend SVG 레이아웃을 단순화한 140x100 미리보기 (선택 전 비교용).
-# backend/ai.py 의 _{template}_svg 함수와 시각적으로 일관되게 유지한다.
-POSTER_TEMPLATE_THUMBNAILS = {
-    "minimal_card": (
-        '<svg viewBox="0 0 140 100" xmlns="http://www.w3.org/2000/svg">'
-        '<rect width="140" height="100" rx="6" fill="#f8fafc"/>'
-        '<rect x="11" y="10" width="60" height="6" rx="2" fill="#1e293b"/>'
-        '<rect x="11" y="20" width="44" height="4" rx="2" fill="#64748b"/>'
-        '<rect x="18" y="32" width="104" height="38" rx="4" fill="#cbd5e1"/>'
-        '<rect x="11" y="76" width="46" height="5" rx="2" fill="#1e293b"/>'
-        '<rect x="11" y="84" width="32" height="4" rx="2" fill="#64748b"/>'
-        '<rect x="11" y="91" width="36" height="6" rx="3" fill="#3b82f6"/>'
-        '</svg>'
-    ),
-    "grid_three": (
-        '<svg viewBox="0 0 140 100" xmlns="http://www.w3.org/2000/svg">'
-        '<rect width="140" height="100" rx="6" fill="#f8fafc"/>'
-        '<rect x="11" y="8" width="76" height="6" rx="2" fill="#1e293b"/>'
-        '<rect x="11" y="20" width="72" height="48" rx="4" fill="#cbd5e1"/>'
-        '<rect x="88" y="20" width="40" height="22" rx="4" fill="#3b82f6" opacity="0.55"/>'
-        '<rect x="88" y="46" width="40" height="22" rx="4" fill="#a78bfa" opacity="0.75"/>'
-        '<rect x="11" y="74" width="54" height="5" rx="2" fill="#1e293b"/>'
-        '<rect x="11" y="83" width="80" height="4" rx="2" fill="#64748b"/>'
-        '<rect x="11" y="91" width="60" height="4" rx="2" fill="#3b82f6"/>'
-        '</svg>'
-    ),
-    "feature_focus": (
-        '<svg viewBox="0 0 140 100" xmlns="http://www.w3.org/2000/svg">'
-        '<rect width="140" height="100" rx="6" fill="#f8fafc"/>'
-        '<rect x="11" y="10" width="64" height="6" rx="2" fill="#1e293b"/>'
-        '<rect x="11" y="24" width="62" height="56" rx="4" fill="#cbd5e1"/>'
-        '<rect x="80" y="22" width="50" height="60" rx="6" fill="#3b82f6" opacity="0.10"/>'
-        '<text x="85" y="31" font-size="6" font-family="sans-serif" font-weight="700" fill="#1d4ed8">SPECS</text>'
-        '<circle cx="86" cy="42" r="1.6" fill="#1d4ed8"/><rect x="90" y="40" width="36" height="3" rx="1" fill="#334155"/>'
-        '<circle cx="86" cy="52" r="1.6" fill="#1d4ed8"/><rect x="90" y="50" width="32" height="3" rx="1" fill="#334155"/>'
-        '<circle cx="86" cy="62" r="1.6" fill="#1d4ed8"/><rect x="90" y="60" width="34" height="3" rx="1" fill="#334155"/>'
-        '<circle cx="86" cy="72" r="1.6" fill="#1d4ed8"/><rect x="90" y="70" width="28" height="3" rx="1" fill="#334155"/>'
-        '<rect x="11" y="89" width="40" height="5" rx="2" fill="#1e293b"/>'
-        '</svg>'
-    ),
-    "promo_banner": (
-        '<svg viewBox="0 0 140 100" xmlns="http://www.w3.org/2000/svg">'
-        '<rect width="140" height="100" rx="6" fill="#f8fafc"/>'
-        '<rect x="6" y="14" width="128" height="60" rx="6" fill="#f59e0b"/>'
-        '<text x="14" y="38" font-size="14" font-family="sans-serif" font-weight="800" fill="#ffffff">50% OFF</text>'
-        '<text x="14" y="56" font-size="9" font-family="sans-serif" font-weight="700" fill="#fff7ed">한정 특가</text>'
-        '<rect x="84" y="22" width="44" height="36" rx="4" fill="#ffffff" opacity="0.55"/>'
-        '<rect x="14" y="80" width="60" height="4" rx="2" fill="#1e293b"/>'
-        '<rect x="14" y="88" width="84" height="4" rx="2" fill="#64748b"/>'
-        '<rect x="14" y="94" width="40" height="3" rx="1" fill="#3b82f6"/>'
-        '</svg>'
-    ),
-}
+render_base_layout_styles()
 
 
 def render_poster_template_thumbnails(current_key: str) -> None:
@@ -541,94 +75,11 @@ def render_poster_template_thumbnails(current_key: str) -> None:
         unsafe_allow_html=True,
     )
 
-MONITOR_SIZES = {
-    "24": "24인치 (56 × 33 cm)",
-    "27": "27인치 (62 × 36 cm)",
-    "32": "32인치 (74 × 43 cm)",
-}
-
-KEYBOARD_SIZE_INFO = {
-    "60": "60% (약 28.6 × 9.5 cm, 61키)",
-    "65": "65% (약 30.5 × 9.5 cm, 67키)",
-    "75": "75% (약 30.5 × 11.4 cm, 84키)",
-    "87": "TKL 80% (약 34.8 × 11.4 cm, 87키)",
-    "104": "풀배열 100% (약 42.9 × 11.4 cm, 104키)",
-}
-
-DEFAULT_LAYOUT_FALLBACK = ["60", "65", "75", "87", "104"]
-IMAGE_JOB_TERMINAL_STATUSES = {"completed", "failed", "draft", "not_configured"}
-
 for key, value in DEFAULTS.items():
     st.session_state.setdefault(key, value.copy() if isinstance(value, list) else value)
 
 if st.session_state.step_selector != st.session_state.step:
     st.session_state.step_selector = st.session_state.step
-
-
-KEYBOARD_MODEL_DEFAULTS = {
-    "Qwertykeys Neo65": {
-        "layout": "65",
-        "description": "65% 컴팩트 커스텀 키보드, 미니멀/프리미엄 광고에 적합",
-    },
-    "Keychron Q1": {
-        "layout": "75",
-        "description": "75% 알루미늄 키보드, 사무용/프리미엄 셋업에 적합",
-    },
-    "Geonworks Frog Mini": {
-        "layout": "65",
-        "description": "작은 책상에 어울리는 미니 배열 커스텀 키보드",
-    },
-    "Custom 75": {
-        "layout": "75",
-        "description": "상세페이지용 제품 시뮬레이션에 적합한 75% 샘플",
-    },
-    "HHKB Style 60": {
-        "layout": "60",
-        "description": "60% 배열, 화살표 클러스터 없는 클래식 미니멀 키보드",
-    },
-    "Keychron Q3 TKL": {
-        "layout": "87",
-        "description": "87키 텐키리스 알루미늄 키보드, 게이밍/사무용 만능 셋업",
-    },
-    "Leopold FC750R": {
-        "layout": "87",
-        "description": "TKL 80% 클래식, PBT 키캡 + 무각 디자인의 사무용 표준",
-    },
-    "Keychron Q6 Full": {
-        "layout": "104",
-        "description": "풀배열 100% 알루미늄 케이스, 텐키 필요한 회계/데이터 업무용",
-    },
-    "Royal Kludge RK104": {
-        "layout": "104",
-        "description": "풀배열 무선 키보드, 책상이 넓은 스튜디오/홈오피스 셋업",
-    },
-}
-
-
-FALLBACK_ASSETS = [
-    {"id": "mouse", "label": "무선 마우스", "category": "input"},
-    {"id": "monitor", "label": "모니터", "category": "display"},
-    {"id": "monitor_arm", "label": "VESA 모니터암", "category": "display"},
-    {"id": "monitor_light_bar", "label": "모니터 라이트 바", "category": "lighting"},
-    {"id": "desk_lamp", "label": "데스크 조명", "category": "lighting"},
-    {"id": "plant", "label": "미니 화분", "category": "decor"},
-    {"id": "speakers", "label": "북쉘프 스피커", "category": "audio"},
-    {"id": "desk_shelf", "label": "모니터 받침대", "category": "furniture"},
-    {"id": "notebook", "label": "노트/플래너", "category": "stationery"},
-    {"id": "headphone_stand", "label": "헤드폰 스탠드", "category": "audio"},
-    {"id": "phone_stand", "label": "스마트폰 스탠드", "category": "accessory"},
-    {"id": "keycap_tray", "label": "키캡 진열 트레이", "category": "keyboard"},
-    {"id": "coffee_mug", "label": "머그컵", "category": "decor"},
-    {"id": "digital_clock", "label": "디지털 시계", "category": "decor"},
-    {"id": "aroma_diffuser", "label": "아로마 디퓨저", "category": "decor"},
-    {"id": "wireless_charger", "label": "무선 충전 패드", "category": "accessory"},
-    {"id": "pen_holder", "label": "펜 홀더", "category": "stationery"},
-    {"id": "book_stack", "label": "책 묶음", "category": "decor"},
-    {"id": "humidifier", "label": "가습기", "category": "decor"},
-    {"id": "photo_frame", "label": "사진 액자", "category": "decor"},
-    {"id": "usb_hub", "label": "USB 허브", "category": "accessory"},
-    {"id": "mouse_pad_round", "label": "라운드 마우스패드", "category": "input"},
-]
 
 
 def render_reference_grid(references: list[dict], columns: int = 4) -> None:
@@ -662,67 +113,6 @@ def render_reference_grid(references: list[dict], columns: int = 4) -> None:
             st.caption(f"{label} · {license_text}")
 
 
-@st.cache_data(ttl=15)
-def fetch_security_config() -> dict:
-    try:
-        return api_get("/security/config")
-    except Exception:
-        return {
-            "openai_api_key": "unknown",
-            "local_llm_base_url": "unknown",
-            "hyperclova_base_url": "unknown",
-            "kanana_base_url": "unknown",
-            "midm_base_url": "unknown",
-            "local_image_endpoint": "unknown",
-            "comfyui_base_url": "unknown",
-            "image_model_backend": "unknown",
-            "step_converter_cmd": "unknown",
-        }
-
-
-@st.cache_data(ttl=15)
-def fetch_ai_providers() -> dict:
-    try:
-        return api_get("/ai/providers")
-    except Exception:
-        return {"providers": [], "auto_order": []}
-
-
-@st.cache_data(ttl=30)
-def fetch_desk_assets() -> list[dict]:
-    try:
-        return api_get("/assets/desk")["assets"]
-    except Exception:
-        return FALLBACK_ASSETS
-
-
-@st.cache_data(ttl=60)
-def fetch_layout_ids() -> list[str]:
-    try:
-        payload = api_get("/layouts")
-        layouts = payload.get("layouts") or []
-        ids = [item["id"] for item in layouts if isinstance(item, dict) and item.get("id")]
-        return ids or list(DEFAULT_LAYOUT_FALLBACK)
-    except Exception:
-        return list(DEFAULT_LAYOUT_FALLBACK)
-
-
-@st.cache_data(ttl=30)
-def fetch_reference_assets() -> list[dict]:
-    try:
-        return api_get("/assets/references")["references"]
-    except Exception:
-        return []
-
-
-@st.cache_data(ttl=30)
-def fetch_model_library() -> dict:
-    try:
-        return api_get("/models/library")
-    except Exception:
-        return {"files": [], "model_compatible_extensions": []}
-
-
 def sync_layout_from_model() -> None:
     defaults = KEYBOARD_MODEL_DEFAULTS.get(st.session_state.keyboard_model)
     if defaults:
@@ -737,6 +127,16 @@ def set_step(step: int) -> None:
 
 def sync_step_from_sidebar() -> None:
     set_step(st.session_state.step_selector)
+
+
+def invalidate_generated_ad_outputs() -> None:
+    """Clear generated ad outputs when source product inputs change."""
+    st.session_state.copy_result = None
+    st.session_state.copy_selected_provider = None
+    st.session_state.copy_experiment_result = None
+    st.session_state.poster_result = None
+    st.session_state.image_job_result = None
+    st.session_state.image_quality_report = None
 
 
 def render_model_viewer(model_url: str, height: int = 720, camera: str | None = None) -> None:
@@ -854,6 +254,7 @@ def build_ad_payload() -> dict:
         "model_url": st.session_state.model_url,
         "reference_asset_path": st.session_state.selected_reference_path,
         "image_job_id": current_image_job_id(),
+        "image_workflow": st.session_state.image_workflow,
         "poster_template": st.session_state.poster_template,
     }
     selected_copy = selected_copy_payload(st.session_state.copy_result)
@@ -1159,9 +560,130 @@ def render_step_progress() -> None:
     st.progress(current / total, text=f"{current} / {total} — {STEP_LABELS[current]}")
 
 
+def render_campaign_studio_header() -> None:
+    stage_cards = []
+    stage_descriptions = {
+        1: "상품명, 가격, 타깃을 정리",
+        2: "도면과 키보드 스펙 연결",
+        3: "3D 데스크 씬 구성",
+        4: "카피, 이미지, 포스터 제작",
+    }
+    for step_id, label in STEP_LABELS.items():
+        active = " active" if step_id == st.session_state.step else ""
+        stage_cards.append(
+            f'<div class="studio-stage{active}">'
+            f'<div class="stage-num">STEP {step_id}</div>'
+            f'<div class="stage-title">{html.escape(label)}</div>'
+            f'<div class="stage-desc">{html.escape(stage_descriptions[step_id])}</div>'
+            f'</div>'
+        )
+
+    st.markdown(
+        f"""
+        <section class="studio-hero">
+          <div>
+            <div class="studio-kicker">Campaign Production Studio</div>
+            <h1>{html.escape(str(st.session_state.product_name))}</h1>
+            <p>
+              제품 정보와 3D 데스크 씬을 하나의 캠페인 브리프로 묶고,
+              광고 문구, 실사 이미지 작업, 포스터 결과물을 같은 화면에서 검수하는 제작형 UI입니다.
+            </p>
+          </div>
+          <div class="studio-brief-card">
+            <strong>현재 캠페인 브리프</strong>
+            <div class="studio-brief-row"><span>채널</span><span>{html.escape(str(st.session_state.target_channel))}</span></div>
+            <div class="studio-brief-row"><span>타깃</span><span>{html.escape(str(st.session_state.target_customer))}</span></div>
+            <div class="studio-brief-row"><span>가격</span><span>{html.escape(str(st.session_state.price))}</span></div>
+            <div class="studio-brief-row"><span>톤</span><span>{html.escape(str(st.session_state.ad_tone))}</span></div>
+          </div>
+        </section>
+        <div class="studio-pipeline">{''.join(stage_cards)}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_studio_status_cards() -> None:
+    model_ready = bool(st.session_state.model_url)
+    copy_ready = bool(st.session_state.copy_result)
+    poster_ready = bool(st.session_state.poster_result)
+    image_job = st.session_state.image_job_result or {}
+    image_status = (image_job.get("job") or {}).get("status") or "대기"
+    cards = [
+        ("3D 씬", "생성 완료" if model_ready else "생성 대기", model_ready),
+        ("광고 문구", "선택 완료" if copy_ready else "후보 대기", copy_ready),
+        ("포스터", "렌더 완료" if poster_ready else f"이미지 {image_status}", poster_ready),
+    ]
+    st.markdown(
+        '<div class="studio-status-grid">'
+        + "".join(
+            f'<div class="studio-status-card {"ready" if ready else ""}">'
+            f'<div class="status-label">{html.escape(label)}</div>'
+            f'<div class="status-value">{html.escape(value)}</div>'
+            f'</div>'
+            for label, value, ready in cards
+        )
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_ad_card_preview_section() -> None:
+    ad_left, ad_right = st.columns([0.66, 0.34])
+    with ad_left:
+        st.markdown("#### 광고 카드 미리보기")
+        result = st.session_state.copy_result or {}
+        headline = result.get("headline") or st.session_state.product_name
+        subcopy = result.get("subcopy") or st.session_state.selling_point
+        cta = result.get("cta") or "자세히 보기"
+        copies = result.get("copies") or []
+        bullet_html = "".join(f"<li>{html.escape(str(copy))}</li>" for copy in copies[:3])
+        if not bullet_html:
+            bullet_html = f"<li>{html.escape(st.session_state.selling_point)}</li>"
+        st.markdown(
+            f"""
+            <div class="ad-preview-card">
+              <h3>{html.escape(str(headline))}</h3>
+              <p class="subcopy">{html.escape(str(subcopy))}</p>
+              <ul>{bullet_html}</ul>
+              <div class="meta">{html.escape(str(st.session_state.price))} · {html.escape(str(st.session_state.target_channel))}</div>
+              <span class="cta">{html.escape(str(cta))}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with ad_right:
+        st.markdown("#### 생성 문구")
+        result = st.session_state.copy_result
+        if result:
+            st.caption(f"선택 provider: {provider_label(st.session_state.get('copy_selected_provider') or result.get('provider'))}")
+            render_copy_inline_editor(result)
+            for copy in result.get("copies", [])[:3]:
+                st.write(f"- {copy}")
+            st.caption(" ".join(result.get("hashtags", [])))
+            if result.get("error"):
+                st.caption(f"fallback note: {result['error']}")
+        else:
+            if st.session_state.copy_experiment_result:
+                st.caption("광고 콘텐츠 단계의 후보 카드에서 사용할 문구를 선택하세요.")
+            else:
+                st.caption("광고 콘텐츠 단계에서 문구를 생성하면 여기에 표시됩니다.")
+
+
 with st.sidebar:
     st.markdown("## DeskAd AI")
     st.caption("도면 기반 3D 셋업 + 광고 콘텐츠 생성")
+
+    st.divider()
+
+    st.markdown("### 화면 모드")
+    st.radio(
+        "UI 테마",
+        options=THEME_OPTIONS,
+        format_func=lambda value: THEME_LABELS[value],
+        label_visibility="collapsed",
+        key="ui_theme_mode",
+    )
 
     st.divider()
 
@@ -1202,7 +724,9 @@ with st.sidebar:
         st.checkbox("PPT 자료", value=False)
 
 
+render_ui_theme_styles(st.session_state.get("ui_theme_mode"))
 render_step_progress()
+render_campaign_studio_header()
 
 STEP_UI_CONTEXT = {
     "CASE_FINISH_LABELS": CASE_FINISH_LABELS,
@@ -1259,12 +783,12 @@ with left_col:
 
 
 with result_col:
-    st.markdown('<div class="section-label">RESULT CANVAS / responsive</div>', unsafe_allow_html=True)
-    with st.container(border=True, height=1000):
+    st.markdown('<div class="section-label">PRODUCTION CANVAS / creative review</div>', unsafe_allow_html=True)
+    with st.container(border=True, height=1080):
         top_a, top_b, top_c = st.columns([0.45, 0.3, 0.25])
         with top_a:
-            st.markdown("### 가상 데스크 셋업 결과")
-            st.caption("도면/규격 JSON과 데스크테리어 항목을 기반으로 생성된 3D 미리보기와 광고 결과물")
+            st.markdown("### 광고 제작 결과")
+            st.caption("3D 씬, 광고 카피, 포스터를 한 화면에서 검수하는 캠페인 보드")
         with top_b:
             meta = st.session_state.model_meta or {}
             kb_info = KEYBOARD_SIZE_INFO.get(st.session_state.layout, st.session_state.layout + "%")
@@ -1288,17 +812,24 @@ with result_col:
                 except Exception as exc:
                     st.error(f"실패: {exc}")
 
+        render_studio_status_cards()
         st.divider()
 
-        setup_tab, upload_tab, poster_tab = st.tabs(["3D 셋업", "업로드 모델", "광고 포스터"])
+        ad_card_tab, setup_tab, upload_tab, poster_tab = st.tabs(["광고 카드", "가상 셋업", "업로드 모델", "광고 결과물"])
+
+        with ad_card_tab:
+            render_ad_card_preview_section()
 
         with setup_tab:
             if st.session_state.model_url:
                 render_model_viewer(st.session_state.model_url, height=600)
-            else:
+            elif st.session_state.step == 3:
                 st.markdown("#### 아직 생성된 3D 결과가 없습니다.")
-                st.write("왼쪽 입력 패널에서 `가상 셋업` 단계로 이동한 뒤 `3D 데스크 셋업 생성`을 누르면 이 영역에 결과가 표시됩니다.")
+                st.write("왼쪽 입력 패널에서 `3D 데스크 셋업 생성`을 누르면 이 영역에 결과가 표시됩니다.")
                 st.json(build_render_payload())
+            else:
+                st.markdown("#### 가상 셋업 결과는 Step 3에서 확인합니다.")
+                st.write("왼쪽 입력 패널에서 `가상 셋업` 단계로 이동하면 3D 생성 전 설정값과 결과가 이 탭에 표시됩니다.")
 
         with upload_tab:
             if st.session_state.uploaded_model_url:
@@ -1355,7 +886,7 @@ with result_col:
                     with st.expander("이미지 모델 응답", expanded=False):
                         st.json(image_reference)
             else:
-                st.write("광고 콘텐츠 단계에서 `포스터 생성`을 누르면 SVG 포스터와 생성 프롬프트가 표시됩니다.")
+                st.write("광고 제작 스튜디오에서 `포스터 생성`을 누르면 SVG 포스터와 생성 프롬프트가 표시됩니다.")
                 st.caption("로컬 이미지 모델 (LOCAL_IMAGE_ENDPOINT) 이 설정되어 있으면 생성된 이미지가 포스터에 직접 합성됩니다.")
 
             image_job_result = st.session_state.image_job_result
@@ -1397,45 +928,3 @@ with result_col:
                             f"{(report.get('bytes') or 0) // 1024}KB"
                         )
                         st.json(report)
-
-        st.divider()
-
-        ad_left, ad_right = st.columns([0.66, 0.34])
-        with ad_left:
-            st.markdown("#### 광고 카드 미리보기")
-            result = st.session_state.copy_result or {}
-            headline = result.get("headline") or st.session_state.product_name
-            subcopy = result.get("subcopy") or st.session_state.selling_point
-            cta = result.get("cta") or "자세히 보기"
-            copies = result.get("copies") or []
-            bullet_html = "".join(f"<li>{html.escape(str(copy))}</li>" for copy in copies[:3])
-            if not bullet_html:
-                bullet_html = f"<li>{html.escape(st.session_state.selling_point)}</li>"
-            st.markdown(
-                f"""
-                <div class="ad-preview-card">
-                  <h3>{html.escape(str(headline))}</h3>
-                  <p class="subcopy">{html.escape(str(subcopy))}</p>
-                  <ul>{bullet_html}</ul>
-                  <div class="meta">{html.escape(str(st.session_state.price))} · {html.escape(str(st.session_state.target_channel))}</div>
-                  <span class="cta">{html.escape(str(cta))}</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with ad_right:
-            st.markdown("#### 생성 문구")
-            result = st.session_state.copy_result
-            if result:
-                st.caption(f"선택 provider: {provider_label(st.session_state.get('copy_selected_provider') or result.get('provider'))}")
-                render_copy_inline_editor(result)
-                for copy in result.get("copies", [])[:3]:
-                    st.write(f"- {copy}")
-                st.caption(" ".join(result.get("hashtags", [])))
-                if result.get("error"):
-                    st.caption(f"fallback note: {result['error']}")
-            else:
-                if st.session_state.copy_experiment_result:
-                    st.caption("광고 콘텐츠 단계의 후보 카드에서 사용할 문구를 선택하세요.")
-                else:
-                    st.caption("광고 콘텐츠 단계에서 문구를 생성하면 여기에 표시됩니다.")
