@@ -1076,7 +1076,7 @@ def _feature_focus_svg(payload: dict, copy_result: dict, image_b64: str | None) 
     )
     bullets_svg = ""
     for i, bullet in enumerate(spec_bullets):
-        line_y = spec_y + 40 + i * 60
+        line_y = spec_y + 70 + i * 58
         bullets_svg += (
             f'<circle cx="{spec_x + 10}" cy="{line_y - 8}" r="6" fill="{accent}"/>'
             f'<text x="{spec_x + 28}" y="{line_y}" font-size="22" fill="{ink}">{html.escape(bullet)}</text>'
@@ -1098,7 +1098,7 @@ def _feature_focus_svg(payload: dict, copy_result: dict, image_b64: str | None) 
   {headline_svg}
   {_hero_image_svg(payload, image_b64, hero_x, hero_y, hero_w, hero_h, wood, ink)}
   <rect x="{spec_x - 8}" y="{spec_y - 8}" width="{spec_w + 16}" height="{hero_h + 16}" rx="20" fill="{accent}" opacity="0.10"/>
-  <text x="{spec_x}" y="{spec_y + 4}" font-size="20" font-weight="700" fill="{accent}">SPECS</text>
+  <text x="{spec_x}" y="{spec_y + 26}" font-size="20" font-weight="800" fill="{ink}" opacity="0.6">SPECS</text>
   {bullets_svg}
   <text x="{pad}" y="{int(height*0.92)}" font-size="26" font-weight="700" fill="{ink}">{product}</text>
   {cta_svg}

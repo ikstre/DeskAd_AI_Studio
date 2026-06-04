@@ -265,7 +265,9 @@ def build_poster_pptx(*, poster_svg: str | None, copy_result: dict, poster: dict
     _add_text(slide, right, Inches(1.05), right_w, Inches(0.95), headline, font_size=Pt(26), bold=True, color="#111827")
     _add_text(slide, right, Inches(2.1), right_w, Inches(0.85), subcopy, font_size=Pt(15), color="#475569")
 
-    cta_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, right, Inches(3.1), Inches(2.0), Inches(0.48))
+    cta_units = sum(1.0 if ord(char) > 127 else 0.4 if char.isspace() else 0.6 for char in cta)
+    cta_width = min(right_w, max(Inches(1.9), Inches(cta_units * 12 / 72 + 0.7)))
+    cta_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, right, Inches(3.1), cta_width, Inches(0.48))
     cta_box.fill.solid()
     cta_box.fill.fore_color.rgb = RGBColor(*_hex_to_rgb("#3b82f6"))
     cta_box.line.color.rgb = RGBColor(*_hex_to_rgb("#3b82f6"))

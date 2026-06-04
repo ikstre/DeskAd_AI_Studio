@@ -47,3 +47,21 @@ def test_build_poster_pptx_embeds_rendered_poster_image():
 
     assert "[Content_Types].xml" in names
     assert any(name.startswith("ppt/media/image") and name.endswith(".png") for name in names)
+
+
+def test_cta_shape_width_scales_with_label_length():
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    def cta_width(cta: str) -> int:
+        pptx = build_poster_pptx(
+            poster_svg=None,
+            copy_result={"headline": "헤드라인", "subcopy": "서브카피", "cta": cta},
+            poster=None,
+            product={"product_name": "Neo65"},
+        )
+        shapes = Presentation(BytesIO(pptx)).slides[0].shapes
+        return next(s.width for s in shapes if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE)
+
+    # A long CTA must produce a wider pill than a short one (no fixed-width clipping).
+    assert cta_width("지금 30% 할인가로 만나보기 바로 지금 확인하세요") > cta_width("구매")
