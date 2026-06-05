@@ -110,13 +110,17 @@ _COMPOSITION_TEMPLATES = {
     },
 }
 
-# 입력에 shot_type이 없을 때 채널별 기본 구도 (PART 7-M-2 '용도' 칼럼 기반)
+# 입력에 shot_type이 없을 때 채널별 기본 구도 (PART 7-M-2 '용도' 칼럼 기반).
+# 키는 실제 UI 채널 값(ui_steps.TARGET_CHANNEL_OPTIONS)과 정확히 일치해야 한다 — 8종 전부 명시해 조용한 폴백 방지.
 _DEFAULT_SHOT_BY_CHANNEL = {
     "인스타그램": "top_down",
     "스마트스토어": "hero",
     "상세페이지": "hero",
-    "쿠팡": "hero",
-    "배너": "wide_scene",
+    "쿠팡 썸네일": "hero",
+    "배너 광고": "wide_scene",
+    "네이버 검색광고": "hero",
+    "카카오 채널": "eye_level",
+    "유튜브 쇼츠": "eye_level",
 }
 
 # 색온도 (PART 7-M-4). 조명(_IMAGE_DIRECTION_BY_TONE)과 같은 소스(ad_tone)에서 파생해

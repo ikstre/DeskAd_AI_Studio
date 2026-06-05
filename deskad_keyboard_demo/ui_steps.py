@@ -14,6 +14,16 @@ DRAWING_UPLOAD_OPTIONS = ["샘플 JSON 사용", "STEP/GLB 파일 업로드"]
 THEME_OPTIONS = ["minimal", "pastel", "premium", "gaming"]
 AD_TONE_OPTIONS = ["프리미엄형", "감성형", "할인형", "기능강조형"]
 IMAGE_RATIO_OPTIONS = ["1:1", "4:5", "16:9"]
+# 이미지 구도. 키는 backend/ai.py의 _COMPOSITION_TEMPLATES와 일치. ""는 채널 기본 구도 자동 선택.
+SHOT_TYPE_OPTIONS = ["", "hero", "top_down", "detail_macro", "eye_level", "wide_scene"]
+SHOT_TYPE_LABELS = {
+    "": "자동 (채널 기본)",
+    "hero": "히어로 (3/4 제품샷)",
+    "top_down": "탑다운 (플랫레이)",
+    "detail_macro": "디테일 매크로 (키캡 클로즈업)",
+    "eye_level": "아이레벨 (책상 라이프스타일)",
+    "wide_scene": "와이드 (방 전체 셋업)",
+}
 
 
 def _option_index(options: list[str], value: str, default: int = 0) -> int:
@@ -317,6 +327,12 @@ def _render_ad_content_step(ctx: dict[str, Any]) -> None:
             "이미지 비율",
             IMAGE_RATIO_OPTIONS,
             index=_option_index(IMAGE_RATIO_OPTIONS, st.session_state.image_ratio),
+        )
+        st.session_state.shot_type = st.selectbox(
+            "이미지 구도",
+            SHOT_TYPE_OPTIONS,
+            index=_option_index(SHOT_TYPE_OPTIONS, st.session_state.shot_type),
+            format_func=lambda k: SHOT_TYPE_LABELS[k],
         )
     with ad_b:
         poster_template_labels = ctx["POSTER_TEMPLATE_LABELS"]

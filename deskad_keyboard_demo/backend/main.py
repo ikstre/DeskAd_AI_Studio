@@ -129,6 +129,8 @@ class AdContentRequest(DeskSetupRenderRequest):
     target_customer: str = Field(default="깔끔한 데스크 셋업을 원하는 직장인", max_length=120)
     selling_point: str = Field(default="조용한 타건감, 크림 톤 키캡, 작은 책상에도 잘 맞는 65% 배열", max_length=240)
     ad_tone: str = Field(default="감성형", max_length=30)
+    # 이미지 구도 선택. 빈 값이면 ai.py가 채널 기본 구도로 폴백한다.
+    shot_type: str = Field(default="", pattern=r"^(hero|top_down|detail_macro|eye_level|wide_scene)?$")
     image_ratio: str = Field(default="1:1", pattern=r"^(1:1|4:5|16:9)$")
     extra_request: str = Field(default="깔끔하고 고급스러운 데스크셋업 광고 느낌", max_length=400)
     model_url: str | None = Field(default=None, max_length=400)
