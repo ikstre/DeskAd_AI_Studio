@@ -1,3 +1,5 @@
+"""이 파일은 API 호출과 캐시 helper를 담당한다."""
+
 from __future__ import annotations
 
 import base64

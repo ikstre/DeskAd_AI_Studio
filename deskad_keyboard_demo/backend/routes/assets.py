@@ -1,3 +1,5 @@
+"""이 파일은 에셋과 레이아웃 조회 API를 담당한다."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,7 +28,7 @@ def _settings_base_url() -> str:
 
 @router.get("/assets/desk")
 def list_desk_assets():
-    """Return available desk accessories and default selected asset ids."""
+    """사용 가능한 데스크 액세서리와 기본 선택 asset id를 반환한다."""
     return {"assets": load_desk_assets(), "default_asset_ids": enabled_asset_ids()}
 
 
@@ -46,7 +48,7 @@ def list_model_library():
 
 @router.get("/layouts")
 def list_layouts():
-    """Return representative keyboard layout ids from data/layouts."""
+    """data/layouts 기준 대표 키보드 레이아웃 id를 반환한다."""
     layouts = []
     for path in sorted((DATA_DIR / "layouts").glob("layout_*.json")):
         layout_id = path.stem.replace("layout_", "")

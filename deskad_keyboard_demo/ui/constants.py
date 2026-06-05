@@ -1,4 +1,6 @@
-﻿from __future__ import annotations
+"""이 파일은 UI 선택지와 표시 라벨 상수를 담당한다."""
+
+from __future__ import annotations
 
 STEP_LABELS = {
     1: "상품 정보",

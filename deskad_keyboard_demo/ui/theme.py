@@ -1,3 +1,5 @@
+"""이 파일은 UI 테마 토큰을 담당한다."""
+
 from __future__ import annotations
 
 DEFAULT_THEME_MODE = "ice_navy"

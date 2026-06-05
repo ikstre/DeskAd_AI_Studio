@@ -1,4 +1,6 @@
-﻿from __future__ import annotations
+"""이 파일은 Streamlit 세션 기본값을 담당한다."""
+
+from __future__ import annotations
 
 from .theme import DEFAULT_THEME_MODE
 

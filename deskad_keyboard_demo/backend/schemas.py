@@ -1,3 +1,5 @@
+"""이 파일은 FastAPI 요청 스키마를 담당한다."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -6,7 +8,7 @@ from .assets import enabled_asset_ids
 
 
 class KeyboardRenderRequest(BaseModel):
-    """Common keyboard rendering options shared by preview and setup requests."""
+    """키보드 단품/셋업 렌더링 공통 옵션을 검증한다."""
 
     product_name: str = Field(default="커스텀 키보드 셋업", max_length=80)
     layout: str = Field(default="65")
@@ -28,7 +30,7 @@ class KeyboardRenderRequest(BaseModel):
 
 
 class DeskSetupRenderRequest(KeyboardRenderRequest):
-    """Full desk setup rendering request including desk, monitor, and assets."""
+    """전체 데스크 셋업 렌더링 옵션을 검증한다."""
 
     assets: list[str] = Field(default_factory=enabled_asset_ids)
     desk_width: float = Field(default=120.0, ge=100.0, le=200.0)
@@ -39,7 +41,7 @@ class DeskSetupRenderRequest(KeyboardRenderRequest):
 
 
 class SelectedCopy(BaseModel):
-    """Ad copy selected in the UI for poster/image generation."""
+    """UI에서 선택한 광고 문구를 검증한다."""
 
     provider: str = Field(default="selected", max_length=60)
     headline: str = Field(default="", max_length=80)
@@ -51,7 +53,7 @@ class SelectedCopy(BaseModel):
 
 
 class AdContentRequest(DeskSetupRenderRequest):
-    """Product, rendering, and campaign fields needed for ad generation."""
+    """광고 콘텐츠 생성에 필요한 상품/타깃/렌더링 정보를 검증한다."""
 
     product_name: str = Field(default="크림 베이지 65% 커스텀 키보드", max_length=80)
     product_type: str = Field(default="커스텀 키보드", max_length=40)
@@ -61,7 +63,7 @@ class AdContentRequest(DeskSetupRenderRequest):
     selling_point: str = Field(default="조용한 타건감, 크림 톤 키캡, 작은 책상에도 잘 맞는 65% 배열", max_length=240)
     ad_tone: str = Field(default="감성형", max_length=30)
     image_ratio: str = Field(default="1:1", pattern=r"^(1:1|4:5|16:9)$")
-    extra_request: str = Field(default="깔끔하고 고급스러운 데스크셋업 광고 자료", max_length=400)
+    extra_request: str = Field(default="깔끔하고 고급스러운 데스크셋업 광고 느낌", max_length=400)
     model_url: str | None = Field(default=None, max_length=400)
     reference_asset_path: str | None = Field(default=None, max_length=400)
     image_job_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_\-]*$")
@@ -71,14 +73,16 @@ class AdContentRequest(DeskSetupRenderRequest):
 
 
 class UploadedModelRequest(BaseModel):
-    """Uploaded model file name and base64 body."""
+    """업로드 모델 파일명과 base64 본문을 검증한다."""
 
-    filename: str = Field(max_length=255, pattern=r"^[^/\\\x00]+$")
+    filename: str = Field(max_length=255, pattern=r"^[^/\\x00]+$")
     content_base64: str = Field(max_length=120_000_000)
     product_name: str | None = Field(default=None, max_length=80)
 
 
 class LibraryModelRequest(BaseModel):
+    """모델 라이브러리 파일 경로를 검증한다."""
+
     path: str = Field(
         description="Library path under models/, uploads/reference_drawings/, shared/models/, or shared/data/.",
         max_length=400,
@@ -87,11 +91,13 @@ class LibraryModelRequest(BaseModel):
 
 
 class CopyExperimentRequest(AdContentRequest):
+    """여러 provider로 광고 문구를 실험할 요청을 검증한다."""
+
     providers: list[str] = Field(default_factory=lambda: ["hyperclova", "kanana", "midm", "local", "fallback"])
 
 
 class PlateDrawingRenderRequest(BaseModel):
-    """Plate id request for converting a keyboard plate drawing to GLB."""
+    """키보드 플레이트 도면을 GLB로 변환할 요청을 검증한다."""
 
     plate_id: str = Field(max_length=120, pattern=r"^[A-Za-z0-9_\-./]+$")
     product_name: str | None = Field(default=None, max_length=80)

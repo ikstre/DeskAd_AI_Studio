@@ -1,3 +1,5 @@
+"""이 파일은 FastAPI HTTPError helper를 담당한다."""
+
 from __future__ import annotations
 
 from fastapi import HTTPException

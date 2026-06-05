@@ -1,3 +1,5 @@
+"""이 파일은 Streamlit 전역 CSS를 담당한다."""
+
 from __future__ import annotations
 
 import streamlit as st

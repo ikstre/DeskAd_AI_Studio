@@ -1,8 +1,4 @@
-"""Compatibility exports for the Streamlit API helper module.
-
-The implementation lives in ``ui.api_client``. Keep this wrapper so older local
-imports of ``ui_api`` continue to work while the UI package split progresses.
-"""
+"""이 파일은 기존 ui_api import 호환을 담당한다."""
 
 from ui.api_client import (
     API_BASE,

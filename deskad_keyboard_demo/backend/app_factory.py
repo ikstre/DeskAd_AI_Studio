@@ -1,3 +1,5 @@
+"""이 파일은 FastAPI 앱 생성과 static mount를 담당한다."""
+
 from __future__ import annotations
 
 from pathlib import Path
