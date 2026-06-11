@@ -16,10 +16,11 @@ PASSWORD_SHA256 = hashlib.sha256(PASSWORD.encode("utf-8")).hexdigest()
 
 
 @pytest.fixture(autouse=True)
-def _clean_auth_state(monkeypatch):
+def _clean_auth_state(monkeypatch, tmp_path):
     auth.reset_state()
     monkeypatch.setenv("DESKAD_LOGIN_ID", "deskad")
     monkeypatch.setenv("DESKAD_LOGIN_PASSWORD_SHA256", PASSWORD_SHA256)
+    monkeypatch.setenv("DESKAD_USERS_PATH", str(tmp_path / "users.json"))
     yield
     auth.reset_state()
 

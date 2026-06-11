@@ -55,6 +55,7 @@ from .schemas import (
     LoginRequest,
     LoginResponse,
     LogoutRequest,
+    SignupRequest,
     PlateDrawingRenderRequest,
     UploadedModelRequest,
 )
@@ -107,6 +108,15 @@ def auth_login(request: LoginRequest):
     실패 사유에 아이디/비밀번호 어느 쪽이 틀렸는지는 노출하지 않는다.
     """
     return auth.login(request.username, request.password)
+
+
+@app.post("/auth/signup", response_model=LoginResponse)
+def auth_signup(request: SignupRequest):
+    """가입 코드 검증 후 사용자를 등록한다. 성공 시 곧바로 세션 토큰 발급(자동 로그인).
+
+    가입 사용자는 data/runtime/users.json에 salt+PBKDF2 해시로 저장된다(평문 금지).
+    """
+    return auth.signup(request.username, request.password, request.signup_code)
 
 
 @app.post("/auth/logout")

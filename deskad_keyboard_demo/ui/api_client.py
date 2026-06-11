@@ -79,6 +79,18 @@ def api_login(username: str, password: str) -> dict:
         return {"ok": False, "error": "request_failed"}
 
 
+def api_signup(username: str, password: str, signup_code: str) -> dict:
+    """/auth/signup 호출 — 연결 실패도 코드형 dict로 돌려 폼에서 일관 처리한다."""
+    try:
+        return api_post(
+            "/auth/signup",
+            {"username": username, "password": password, "signup_code": signup_code},
+            timeout=10,
+        )
+    except Exception:
+        return {"ok": False, "error": "request_failed"}
+
+
 def api_logout(token: str) -> dict:
     """/auth/logout 호출 — 실패해도 로컬 세션 정리는 진행되므로 조용히 무시한다."""
     try:
