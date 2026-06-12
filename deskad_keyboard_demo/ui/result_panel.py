@@ -5,21 +5,9 @@ from __future__ import annotations
 import streamlit as st
 import streamlit.components.v1 as components
 
-from ppt_export import build_poster_pptx
 from ui_steps import render_step_input_panel
 
-from .ad_content import (
-    auto_poll_image_job,
-    current_product_export_payload,
-    generate_image_job,
-    refresh_image_job,
-    render_ad_card_preview_section,
-    render_copy_experiment_picker,
-)
-from .api_client import api_post, fetch_text_asset, poster_preview_height, responsive_svg_document
-from .components import render_studio_status_cards
 from .constants import IMAGE_JOB_TERMINAL_STATUSES, KEYBOARD_SIZE_INFO, MONITOR_SIZES, POSTER_TEMPLATE_LABELS, STEP_LABELS
-from .rendering import render_desk_setup, render_model_viewer
 
 
 def _render_stage_header(current_step: int) -> None:
@@ -54,6 +42,8 @@ def _render_stage_header(current_step: int) -> None:
         with top_c:
             if st.button("결과 새로고침", use_container_width=True):
                 try:
+                    from .rendering import render_desk_setup
+
                     render_desk_setup()
                     st.rerun()
                 except Exception as exc:
@@ -98,6 +88,8 @@ def _render_input_guide(current_step: int) -> None:
 def _render_setup_preview() -> None:
     st.markdown("### 3D 셋업")
     if st.session_state.model_url:
+        from .rendering import render_model_viewer
+
         render_model_viewer(st.session_state.model_url, height=540)
         if st.session_state.model_meta:
             with st.expander("현재 셋업 메타데이터", expanded=False):
@@ -130,6 +122,9 @@ def _render_poster_downloads(poster: dict, poster_svg: str) -> None:
         use_container_width=True,
     )
     try:
+        from ppt_export import build_poster_pptx
+        from .ad_content import current_product_export_payload
+
         pptx_data = build_poster_pptx(
             poster_svg=poster_svg,
             copy_result=st.session_state.copy_result or poster.get("copy") or {},
@@ -148,6 +143,8 @@ def _render_poster_downloads(poster: dict, poster_svg: str) -> None:
 
 
 def _render_poster_result(poster: dict) -> None:
+    from .api_client import fetch_text_asset, poster_preview_height, responsive_svg_document
+
     st.success("포스터 생성 완료")
     st.markdown("#### 포스터 미리보기")
     st.caption(_poster_status_badge(poster))
@@ -161,6 +158,9 @@ def _render_poster_result(poster: dict) -> None:
 
 
 def _render_ad_preview() -> None:
+    from .ad_content import render_ad_card_preview_section
+    from .components import render_studio_status_cards
+
     st.markdown("### 광고 미리보기")
     render_studio_status_cards()
 
@@ -169,10 +169,8 @@ def _render_ad_preview() -> None:
         _render_poster_result(poster)
         with st.expander("광고 카드 / 문구 미리보기", expanded=False):
             render_ad_card_preview_section()
-            render_copy_experiment_picker()
     else:
         render_ad_card_preview_section()
-        render_copy_experiment_picker()
         st.caption("포스터를 생성하면 이 영역에 결과가 표시됩니다.")
 
 
@@ -191,7 +189,7 @@ def _render_step_content(ctx: dict, go_previous, go_next) -> None:
             _render_edit_panel(ctx, go_previous, go_next)
         return
 
-    preview_col, edit_col = st.columns([0.36, 0.64], gap="large")
+    preview_col, edit_col = st.columns([0.44, 0.56], gap="large")
     with preview_col:
         _render_ad_preview()
     with edit_col:
@@ -199,6 +197,9 @@ def _render_step_content(ctx: dict, go_previous, go_next) -> None:
 
 
 def _render_poster_details() -> None:
+    from .ad_content import auto_poll_image_job, refresh_image_job
+    from .api_client import api_post
+
     with st.expander("포스터 / 이미지 작업 상세", expanded=False):
         st.markdown("### 포스터 작업 상세")
         poster = st.session_state.poster_result

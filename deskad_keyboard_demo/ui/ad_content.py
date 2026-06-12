@@ -9,6 +9,7 @@ import streamlit as st
 
 from .api_client import api_get, api_post
 from .constants import IMAGE_JOB_TERMINAL_STATUSES, POSTER_TEMPLATE_LABELS, PROVIDER_LABELS
+from .formatting import format_price_display
 from .rendering import build_render_payload
 
 def current_image_job_id() -> str | None:
@@ -172,17 +173,23 @@ def generate_copy_variants() -> None:
     st.session_state.copy_result = selected
     st.session_state.copy_selected_provider = provider
 
-def generate_poster() -> None:
-    data = api_post("/ai/poster", build_ad_payload(), timeout=300)
+def generate_poster(include_completed_image: bool = True) -> None:
+    payload = build_ad_payload()
+    if not include_completed_image:
+        payload["image_job_id"] = None
+    data = api_post("/ai/poster", payload, timeout=300)
     st.session_state.poster_result = data
     st.session_state.copy_result = data["copy"]
     st.session_state.copy_selected_provider = data["copy"].get("provider")
 
-def generate_image_job(force_regen: bool = False) -> None:
+def generate_image_job(force_regen: bool = False) -> dict:
     # force_regen=True는 캐시를 건너뛰고 같은 조건으로 새로 생성한다(결과 불만족 시
     # 재시도 UX — 2026-06-11 이미지 QA). 서버/워커가 seed를 랜덤화하므로 새 결과가 나온다.
     path = "/ai/image/jobs?force_regen=true" if force_regen else "/ai/image/jobs"
-    data = api_post(path, build_ad_payload(), timeout=180)
+    payload = build_ad_payload()
+    # 문구 엔진과 이미지 백엔드는 역할이 다르므로 이미지 작업은 OpenAI 이미지 백엔드를 우선 사용한다.
+    payload["engine"] = "openai"
+    data = api_post(path, payload, timeout=180)
     st.session_state.image_job_result = data
     copy_result = data.get("copy") if isinstance(data, dict) else None
     if isinstance(copy_result, dict):
@@ -194,6 +201,7 @@ def generate_image_job(force_regen: bool = False) -> None:
     st.session_state.image_quality_report = None
     st.session_state.image_polling_enabled = image_job_is_pending(job)
     st.session_state.image_poll_started_at = time.time() if st.session_state.image_polling_enabled else None
+    return data
 
 def refresh_image_job() -> dict | None:
     current = st.session_state.image_job_result or {}
@@ -353,14 +361,67 @@ def render_copy_experiment_picker() -> None:
                             st.session_state.copy_selected_provider = provider
                             st.rerun()
 
+
+def render_compact_copy_candidates(limit: int = 3) -> None:
+    experiment = st.session_state.copy_experiment_result
+    if not experiment:
+        st.caption("광고 문구를 생성하면 후보가 여기에 표시됩니다.")
+        return
+
+    results = experiment.get("results") or []
+    if not results:
+        st.caption("생성 후보가 없습니다.")
+        return
+
+    selected_provider = st.session_state.get("copy_selected_provider")
+    current = st.session_state.copy_result or {}
+    shown = 0
+    for index, item in enumerate(results):
+        copy = item.get("copy") or {}
+        if not copy:
+            continue
+        provider = item.get("provider", "unknown")
+        label = provider_label(provider)
+        is_selected = (
+            selected_provider == provider
+            and current.get("headline") == copy.get("headline")
+            and current.get("subcopy") == copy.get("subcopy")
+        )
+        shown += 1
+        with st.container(border=True):
+            st.caption(f"{label} · {item.get('status', 'unknown')}")
+            st.markdown(f"**{copy.get('headline') or '제목 없음'}**")
+            subcopy = str(copy.get("subcopy") or "")
+            if subcopy:
+                st.caption(subcopy[:90] + ("..." if len(subcopy) > 90 else ""))
+            button_label = "선택됨" if is_selected else "이 문구 사용"
+            if st.button(
+                button_label,
+                key=f"use_compact_copy_{index}_{provider}",
+                type="primary" if is_selected else "secondary",
+                use_container_width=True,
+                disabled=is_selected,
+            ):
+                selected = selected_copy_payload({**copy, "provider": copy.get("provider") or provider})
+                if selected:
+                    st.session_state.copy_result = selected
+                    st.session_state.copy_selected_provider = provider
+                    st.rerun()
+        if shown >= limit:
+            break
+
+    if shown == 0:
+        st.caption("사용 가능한 문구 후보가 없습니다.")
+
+
 def render_ad_card_preview_section() -> None:
-    ad_left, ad_right = st.columns([0.66, 0.34])
+    ad_left, ad_right = st.columns([0.70, 0.30])
     with ad_left:
         st.markdown("#### 광고 카드 미리보기")
         result = st.session_state.copy_result or {}
         product_name = str(st.session_state.get("product_name") or "").strip() or "상품명을 입력해주세요"
         selling_point = str(st.session_state.get("selling_point") or "").strip()
-        price = str(st.session_state.get("price") or "").strip() or "가격 미입력"
+        price = format_price_display(st.session_state.get("price"))
         target_channel = str(st.session_state.get("target_channel") or "").strip() or "채널 미입력"
         headline = result.get("headline") or product_name
         subcopy = result.get("subcopy") or selling_point or "핵심 특징을 입력하면 광고 문구가 표시됩니다."
@@ -375,9 +436,20 @@ def render_ad_card_preview_section() -> None:
         template_note = html.escape(str(template_label).split(" (")[0])
         side_panel = ""
         if template_key == "grid_three":
-            side_panel = """
-              <div class="ad-preview-grid">
-                <span></span><span></span><span></span>
+            product_tile = html.escape(product_name[:18])
+            side_panel = f"""
+              <div class="ad-preview-grid-panel" aria-label="grid template preview">
+                <div class="ad-preview-grid-hero">
+                  <span>FEATURED SETUP</span>
+                  <strong>{product_tile}</strong>
+                </div>
+                <div class="ad-preview-grid">
+                  <span>키보드</span><span>책상</span><span>무드</span>
+                </div>
+                <div class="ad-preview-grid-note">
+                  <b>3컷 구성</b>
+                  <small>제품, 사용 환경, 핵심 포인트를 한 카드에 배치</small>
+                </div>
               </div>
             """
         elif template_key == "feature_focus":
@@ -413,11 +485,15 @@ def render_ad_card_preview_section() -> None:
             unsafe_allow_html=True,
         )
     with ad_right:
-        st.markdown("#### 생성 문구")
+        st.markdown("#### 문구 후보")
+        render_compact_copy_candidates()
+
+        st.markdown("#### 선택 문구")
         result = st.session_state.copy_result
         if result:
             st.caption(f"선택 provider: {provider_label(st.session_state.get('copy_selected_provider') or result.get('provider'))}")
-            render_copy_inline_editor(result)
+            with st.expander("선택 문구 편집", expanded=False):
+                render_copy_inline_editor(result)
             for copy in result.get("copies", [])[:3]:
                 st.write(f"- {copy}")
             st.caption(" ".join(result.get("hashtags", [])))

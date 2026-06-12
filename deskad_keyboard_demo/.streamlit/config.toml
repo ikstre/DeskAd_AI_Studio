@@ -1,2 +1,12 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+fileWatcherType = "none"
+runOnSave = false
+
 [theme]
 primaryColor = "#3b82f6"
+backgroundColor = "#eef4f8"
+secondaryBackgroundColor = "#fbfdff"
+textColor = "#0f172a"

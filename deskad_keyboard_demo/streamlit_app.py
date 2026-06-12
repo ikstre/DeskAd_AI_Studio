@@ -9,7 +9,6 @@ from ui.components import render_campaign_studio_header
 from ui.context import build_step_ui_context
 from ui.login import is_authenticated, render_login_page
 from ui.result_panel import render_result_panel
-from ui.rendering import render_desk_setup
 from ui.sidebar import render_sidebar
 from ui.state import (
     go_next_step,
@@ -37,6 +36,8 @@ if not is_authenticated():
 
 
 def go_next() -> None:
+    from ui.rendering import render_desk_setup
+
     go_next_step(render_desk_setup)
 
 

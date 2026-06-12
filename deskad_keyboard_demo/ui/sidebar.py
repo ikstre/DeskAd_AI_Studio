@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 import streamlit as st
 
-from .api_client import fetch_security_config
 from .constants import STEP_LABELS
 from .login import logout
 from .theme import THEME_LABELS, THEME_OPTIONS
@@ -72,22 +71,28 @@ def render_sidebar(on_step_change: Callable[[], None]) -> None:
         st.divider()
 
         with st.expander("고급 설정 / 진단", expanded=False):
-            config = fetch_security_config()
             st.caption("일반 제작 과정에서는 열어보지 않아도 되는 운영 정보입니다.")
+            load_diagnostics = st.button("진단 정보 불러오기", use_container_width=True, key="load_diagnostics")
 
             with st.expander("API / 보안 상태", expanded=False):
-                st.caption(f"OpenAI Key: {config.get('openai_api_key', 'unknown')}")
-                st.caption(
-                    "Tracks: "
-                    f"OpenAI {config.get('openai_api_key', 'unknown')} · "
-                    f"HyperCLOVA text {config.get('hyperclova_base_url', 'unknown')} / "
-                    f"vision {config.get('hyperclova_vision_configured', 'unknown')} / "
-                    f"image {config.get('hyperclova_image_configured', 'unknown')} · "
-                    f"Local text {config.get('local_llm_base_url', 'unknown')} / "
-                    f"ComfyUI {config.get('comfyui_base_url', 'unknown')}"
-                )
-                st.caption(f"STEP Converter: {config.get('step_converter_cmd', 'unknown')}")
-                st.caption("실제 키 값은 화면과 API 응답에 노출하지 않습니다.")
+                if load_diagnostics:
+                    from .api_client import fetch_security_config
+
+                    config = fetch_security_config()
+                    st.caption(f"OpenAI Key: {config.get('openai_api_key', 'unknown')}")
+                    st.caption(
+                        "Tracks: "
+                        f"OpenAI {config.get('openai_api_key', 'unknown')} · "
+                        f"HyperCLOVA text {config.get('hyperclova_base_url', 'unknown')} / "
+                        f"vision {config.get('hyperclova_vision_configured', 'unknown')} / "
+                        f"image {config.get('hyperclova_image_configured', 'unknown')} · "
+                        f"Local text {config.get('local_llm_base_url', 'unknown')} / "
+                        f"ComfyUI {config.get('comfyui_base_url', 'unknown')}"
+                    )
+                    st.caption(f"STEP Converter: {config.get('step_converter_cmd', 'unknown')}")
+                    st.caption("실제 키 값은 화면과 API 응답에 노출하지 않습니다.")
+                else:
+                    st.caption("필요할 때만 진단 정보를 불러옵니다.")
 
             with st.expander("도면 데이터", expanded=False):
                 st.checkbox("키보드 하우징", value=True)
