@@ -273,6 +273,10 @@ def health() -> dict[str, Any]:
 def images_generations(req: ImageRequest) -> dict[str, Any]:
     if not req.prompt.strip():
         raise HTTPException(status_code=400, detail="prompt must not be empty")
+    # 실패(조기중단/vision_tokens=0)가 seed가 아니라 프롬프트 내용에 종속되는
+    # 패턴이 관측됨(2026-06-12) — 실패 클러스터를 프롬프트와 대조할 수 있게
+    # 요청 시점에 프롬프트 길이와 머리를 남긴다.
+    logger.info("request: n=%d prompt_len=%d prompt_head=%r", req.n, len(req.prompt), req.prompt[:160])
     # A fixed base seed makes failures deterministic: a prompt that misses the
     # token block on its retry seeds will fail identically on every resubmit.
     # Default to a random seed; accept an explicit one for reproducibility.

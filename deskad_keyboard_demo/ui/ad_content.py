@@ -9,6 +9,7 @@ import streamlit as st
 
 from .api_client import api_get, api_post
 from .constants import IMAGE_JOB_TERMINAL_STATUSES, POSTER_TEMPLATE_LABELS, PROVIDER_LABELS
+from .progress import run_with_live_progress
 from .rendering import build_render_payload
 
 def current_image_job_id() -> str | None:
@@ -163,20 +164,56 @@ def generate_copy_experiment() -> None:
     st.session_state.copy_selected_provider = provider
 
 
-def generate_copy_variants() -> None:
-    # 선택한 엔진에서 문구 변형 3-4개를 뽑아 나란히 비교/선택한다(로컬처럼 모델 결과로 고른다).
-    st.session_state.copy_experiment_result = api_post(
-        "/ai/copy/variants", build_ad_payload(), timeout=400
-    )
-    provider, selected = first_successful_copy(st.session_state.copy_experiment_result)
+def _apply_copy_variants_result(data: dict) -> None:
+    st.session_state.copy_experiment_result = data
+    provider, selected = first_successful_copy(data)
     st.session_state.copy_result = selected
     st.session_state.copy_selected_provider = provider
 
-def generate_poster() -> None:
-    data = api_post("/ai/poster", build_ad_payload(), timeout=300)
+
+def generate_copy_variants() -> None:
+    # 선택한 엔진에서 문구 변형 3-4개를 뽑아 나란히 비교/선택한다(로컬처럼 모델 결과로 고른다).
+    _apply_copy_variants_result(api_post("/ai/copy/variants", build_ad_payload(), timeout=400))
+
+
+def generate_copy_variants_live(slot) -> None:
+    """버튼 슬롯을 실시간 게이지로 바꿔가며 문구 변형을 생성한다."""
+    payload = build_ad_payload()
+    # hyperclova 트랙은 GPU 워커 교체(~110s)가 겹칠 수 있어 기준선을 엔진별로 둔다.
+    expected = {"hyperclova": 150, "local": 60, "openai": 30}.get(
+        str(st.session_state.get("engine") or ""), 90
+    )
+    data = run_with_live_progress(
+        slot,
+        lambda: api_post("/ai/copy/variants", payload, timeout=400),
+        label="광고 문구 생성 중",
+        expected_seconds=expected,
+    )
+    _apply_copy_variants_result(data)
+
+
+def _apply_poster_result(data: dict) -> None:
     st.session_state.poster_result = data
     st.session_state.copy_result = data["copy"]
     st.session_state.copy_selected_provider = data["copy"].get("provider")
+
+
+def generate_poster() -> None:
+    _apply_poster_result(api_post("/ai/poster", build_ad_payload(), timeout=300))
+
+
+def generate_poster_live(slot) -> None:
+    """버튼 슬롯을 실시간 게이지로 바꿔가며 포스터를 생성한다."""
+    payload = build_ad_payload()
+    # 문구가 이미 선택돼 있으면 SVG 합성 위주(빠름), 아니면 copy 생성이 포함된다.
+    expected = 20 if payload.get("selected_copy") else 90
+    data = run_with_live_progress(
+        slot,
+        lambda: api_post("/ai/poster", payload, timeout=300),
+        label="포스터 생성 중",
+        expected_seconds=expected,
+    )
+    _apply_poster_result(data)
 
 def generate_image_job(force_regen: bool = False) -> None:
     # force_regen=True는 캐시를 건너뛰고 같은 조건으로 새로 생성한다(결과 불만족 시

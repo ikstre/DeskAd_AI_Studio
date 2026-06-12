@@ -354,22 +354,15 @@ def _render_virtual_setup_step(ctx: dict[str, Any]) -> None:
         index=_option_index(THEME_OPTIONS, st.session_state.theme),
     )
 
-    if st.button("3D 데스크 셋업 생성", type="primary", use_container_width=True):
-        progress = st.progress(0, text="3D 셋업 생성 준비 중")
-        status = st.empty()
+    # 클릭하면 버튼 자리가 실시간 경과 게이지로 바뀐다(2026-06-12 QA 2).
+    setup_slot = st.empty()
+    if setup_slot.button("3D 데스크 셋업 생성", type="primary", use_container_width=True):
         try:
-            status.info("25% · 셋업 옵션과 배치 구성을 정리하는 중")
-            progress.progress(25, text="셋업 옵션 정리 중")
-            status.info("60% · GLB 모델과 이미지 구도 데이터를 생성하는 중")
-            progress.progress(60, text="GLB 모델 생성 중")
-            ctx["render_desk_setup"]()
-            status.success("100% · 3D GLB 생성 완료")
-            progress.progress(100, text="3D GLB 생성 완료")
+            ctx["render_desk_setup_live"](setup_slot)
             st.success("3D GLB 생성 완료")
             st.rerun()
         except Exception as exc:
-            progress.empty()
-            status.empty()
+            setup_slot.empty()
             st.error(f"렌더링 실패: {exc}")
 
     # 새로 생성하는 대신 이전 생성 결과나 공용/외부 모델을 불러올 수 있게 한다.
@@ -519,14 +512,24 @@ def _render_deskmat_setup_controls() -> None:
     st.session_state.deskmat_color = st.color_picker("데스크매트", st.session_state.deskmat_color)
 
 
+def _remove_asset_from_setup(asset_id: str) -> None:
+    # on_click 콜백은 다음 rerun 전에 실행되므로, 이미 인스턴스화된 radio 위젯
+    # key(selected_setup_item)를 안전하게 수정할 수 있다(본문에서 직접 대입하면
+    # StreamlitAPIException — 2026-06-12 QA 1).
+    _set_asset_enabled(asset_id, False)
+    st.session_state.selected_setup_item = "keyboard"
+
+
 def _render_generic_asset_controls(asset_id: str, ctx: dict[str, Any]) -> None:
     assets = {asset["id"]: asset for asset in ctx["fetch_desk_assets"]()}
     item = assets.get(asset_id, {})
     st.caption(f"{item.get('category', 'asset')} · {SETUP_ITEM_LABELS.get(asset_id, item.get('label', asset_id))}")
-    if st.button("셋업에서 제거", use_container_width=True):
-        _set_asset_enabled(asset_id, False)
-        st.session_state.selected_setup_item = "keyboard"
-        st.rerun()
+    st.button(
+        "셋업에서 제거",
+        use_container_width=True,
+        on_click=_remove_asset_from_setup,
+        args=(asset_id,),
+    )
 
 
 def _render_ad_content_step(ctx: dict[str, Any]) -> None:
@@ -586,18 +589,16 @@ def _render_ad_content_step(ctx: dict[str, Any]) -> None:
                     use_container_width=True,
                 )
 
+    # 생성 버튼들은 클릭하면 버튼 자리가 실시간 경과 게이지로 바뀐다(2026-06-12 QA 2).
     col_copy, col_image, col_poster = st.columns(3)
-    if col_copy.button("광고 문구 생성", type="secondary", use_container_width=True):
-        progress = st.progress(0, text="광고 문구 생성 준비 중")
+    copy_slot = col_copy.empty()
+    if copy_slot.button("광고 문구 생성", type="secondary", use_container_width=True):
         try:
-            engine_label = ENGINE_LABELS.get(st.session_state.get("engine", "hyperclova"), "선택 엔진")
-            progress.progress(30, text=f"{engine_label} 문구 변형 생성 중")
-            ctx["generate_copy_variants"]()
-            progress.progress(100, text="광고 문구 생성 완료")
+            ctx["generate_copy_variants_live"](copy_slot)
             st.success("광고 문구 변형 생성 완료 — 마음에 드는 후보를 선택하세요")
             st.rerun()
         except Exception as exc:
-            progress.empty()
+            copy_slot.empty()
             st.error(f"문구 생성 실패: {exc}")
     if col_image.button("실사 이미지 작업", type="secondary", use_container_width=True):
         progress = st.progress(0, text="이미지 작업 요청 준비 중")
@@ -611,22 +612,14 @@ def _render_ad_content_step(ctx: dict[str, Any]) -> None:
             progress.empty()
             st.error(f"이미지 작업 실패: {exc}")
     poster_disabled = ctx["poster_waiting_for_image"]()
-    if col_poster.button("포스터 생성", type="primary", use_container_width=True, disabled=poster_disabled):
-        progress = st.progress(0, text="포스터 생성 준비 중")
-        status = st.empty()
+    poster_slot = col_poster.empty()
+    if poster_slot.button("포스터 생성", type="primary", use_container_width=True, disabled=poster_disabled):
         try:
-            status.info("15% · 선택한 템플릿과 문구를 정리하는 중")
-            progress.progress(15, text="선택한 템플릿과 문구 정리 중")
-            status.info("45% · 광고 이미지와 SVG 포스터를 생성하는 중")
-            progress.progress(45, text="광고 이미지와 SVG 포스터 생성 중")
-            ctx["generate_poster"]()
-            status.success("100% · 포스터 생성 완료")
-            progress.progress(100, text="포스터 생성 완료")
+            ctx["generate_poster_live"](poster_slot)
             st.success("포스터 생성 완료")
             st.rerun()
         except Exception as exc:
-            progress.empty()
-            status.empty()
+            poster_slot.empty()
             st.error(f"포스터 생성 실패: {exc}")
     if poster_disabled:
         st.caption("이미지 작업이 완료되면 포스터 생성이 활성화됩니다.")

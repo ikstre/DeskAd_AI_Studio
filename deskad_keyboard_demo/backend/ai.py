@@ -2257,18 +2257,21 @@ def _hyperclova_native_image_prompt(payload: dict, image_prompt: str) -> str:
         if asset and str(asset) not in {"keyboard", "desk"}
     ][:4]
     asset_clause = ", ".join(assets) if assets else "no extra accessories"
-    colors = ", ".join(
-        part
-        for part in (
-            f"case {describe_color(payload.get('case_color'))}",
-            f"keycaps {describe_color(payload.get('keycap_color'))}",
-            f"accent keycaps {describe_color(payload.get('accent_keycap_color'))}",
-        )
-        if part and "None" not in part
-    )
-    # describe_color는 "ivory off-white (#f5f0e6)"처럼 hex를 병기한다. Omni는
-    # prompt 속 문자열을 이미지에 그대로 echo하는 경향이 있어 hex 표기는 제거.
-    colors = re.sub(r"\s*\(#[0-9a-fA-F]{3,8}\)", "", colors)
+    color_parts: list[str] = []
+    for color_label, color_key in (
+        ("case", "case_color"),
+        ("keycaps", "keycap_color"),
+        ("accent keycaps", "accent_keycap_color"),
+    ):
+        described = describe_color(payload.get(color_key))
+        # describe_color는 "ivory off-white (#f5f0e6)"처럼 hex를 병기한다. Omni는
+        # prompt 속 문자열을 이미지에 그대로 echo하는 경향이 있어 hex 표기는 제거.
+        # 빈 색상은 통째로 제외 — "case , keycaps ," 같은 깨진 절이 prompt에
+        # 들어가는 것을 막는다(2026-06-12 QA 3 조사 중 발견).
+        described = re.sub(r"\s*\(#[0-9a-fA-F]{3,8}\)", "", described).strip()
+        if described and "None" not in described:
+            color_parts.append(f"{color_label} {described}")
+    colors = ", ".join(color_parts)
     prompt = (
         f"Create one photorealistic Korean ecommerce product image of {product}, "
         f"a {layout_label}. Camera: {comp['angle']}; {comp['framing']}; {comp['lens']}. "
@@ -2345,7 +2348,9 @@ def _hyperclova_grid_three_reference(
         shot_prompt = (
             sanitize_user_text(f"{shot_prompt} Panel focus: {shot['instruction']}.", limit=1500) or shot_prompt
         )
-        shot_record: dict = {"id": shot["id"], "label": shot["label"]}
+        # 실패가 프롬프트 내용에 종속되는 패턴(2026-06-12 QA 3)이라, 실패 잡을
+        # 사후 비교할 수 있게 실제 전송 프롬프트 머리를 기록한다.
+        shot_record: dict = {"id": shot["id"], "label": shot["label"], "prompt_preview": shot_prompt[:240]}
         try:
             result = _hyperclova_openai_images_call(
                 {"model": model, "prompt": shot_prompt, "size": size, "n": 1, "response_format": "b64_json"}
@@ -2388,6 +2393,9 @@ def _hyperclova_openai_images_reference(
     if requested_count > 1 and payload.get("poster_template") == "grid_three":
         return _hyperclova_grid_three_reference(payload, image_prompt, on_progress=on_progress)
     request_payload = _build_hyperclova_openai_images_payload(payload, image_prompt)
+    # 실패가 프롬프트 내용에 종속되는 패턴(2026-06-12 QA 3) — prompt_preview(ComfyUI용)와
+    # 별개로, Omni에 실제 전송한 native prompt 머리를 잡 기록에 남겨 사후 비교를 가능하게 한다.
+    native_prompt_preview = str(request_payload.get("prompt") or "")[:240]
     try:
         result = _hyperclova_openai_images_call(request_payload)
     except Exception as exc:
@@ -2397,6 +2405,7 @@ def _hyperclova_openai_images_reference(
             "model": model,
             "error": _hyperclova_request_error_text(exc),
             "has_image": False,
+            "native_prompt_preview": native_prompt_preview,
         }
 
     image_b64s = _decode_local_images_to_b64(result, limit=requested_count)
@@ -2407,6 +2416,7 @@ def _hyperclova_openai_images_reference(
         "has_image": bool(image_b64s),
         "requested_image_count": requested_count,
         "image_count": len(image_b64s),
+        "native_prompt_preview": native_prompt_preview,
     }
     if image_b64s:
         summary["image_b64"] = image_b64s[0]
