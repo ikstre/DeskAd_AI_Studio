@@ -7,8 +7,11 @@ from collections.abc import Callable
 from .ad_content import (
     generate_copy_experiment,
     generate_copy_variants,
+    generate_copy_variants_live,
     generate_image_job,
     generate_poster,
+    generate_poster_live,
+    has_completed_image_job,
     poster_waiting_for_image,
     render_copy_experiment_picker,
 )
@@ -38,7 +41,12 @@ from .constants import (
     SWITCH_STEM_LABELS,
 )
 from .model_library import render_model_load_panel
-from .rendering import prepare_library_model, render_desk_setup, upload_reference_model
+from .rendering import (
+    prepare_library_model,
+    render_desk_setup,
+    render_desk_setup_live,
+    upload_reference_model,
+)
 
 
 def build_step_ui_context(sync_layout_from_model: Callable[[], None]) -> dict:
@@ -66,13 +74,17 @@ def build_step_ui_context(sync_layout_from_model: Callable[[], None]) -> dict:
         "prepare_library_model": prepare_library_model,
         "fetch_desk_assets": fetch_desk_assets,
         "render_desk_setup": render_desk_setup,
+        "render_desk_setup_live": render_desk_setup_live,
         "render_poster_template_thumbnails": render_poster_template_thumbnails,
         "fetch_security_config": fetch_security_config,
         "generate_copy_experiment": generate_copy_experiment,
         "generate_copy_variants": generate_copy_variants,
+        "generate_copy_variants_live": generate_copy_variants_live,
         "generate_image_job": generate_image_job,
         "poster_waiting_for_image": poster_waiting_for_image,
+        "has_completed_image_job": has_completed_image_job,
         "generate_poster": generate_poster,
+        "generate_poster_live": generate_poster_live,
         "fetch_ai_providers": fetch_ai_providers,
         "activate_engine_track": activate_engine_track,
         "render_copy_experiment_picker": render_copy_experiment_picker,
