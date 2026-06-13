@@ -11,6 +11,7 @@ from .ad_content import (
     generate_image_job,
     generate_poster,
     generate_poster_live,
+    has_completed_image_job,
     poster_waiting_for_image,
     render_copy_experiment_picker,
 )
@@ -81,6 +82,7 @@ def build_step_ui_context(sync_layout_from_model: Callable[[], None]) -> dict:
         "generate_copy_variants_live": generate_copy_variants_live,
         "generate_image_job": generate_image_job,
         "poster_waiting_for_image": poster_waiting_for_image,
+        "has_completed_image_job": has_completed_image_job,
         "generate_poster": generate_poster,
         "generate_poster_live": generate_poster_live,
         "fetch_ai_providers": fetch_ai_providers,

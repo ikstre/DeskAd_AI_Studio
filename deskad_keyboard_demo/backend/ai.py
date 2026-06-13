@@ -3201,11 +3201,31 @@ def _submit_comfyui_job(job: dict, payload: dict, image_prompt: str) -> dict:
 # timeout(기본 420s) × 요청 장수 + grace를 넘긴 running job은 poll 시점에
 # failed로 종결한다. grid_three는 컷별 분할 요청이라 장수만큼 예산이 커진다.
 _HYPERCLOVA_JOB_STALE_GRACE_SECONDS = 120
+# 큐 대기 thread가 죽으면(queued_heartbeat 갱신 중단) poll 시점에 failed로 종결.
+_HYPERCLOVA_QUEUED_HEARTBEAT_STALE_SECONDS = 90
+# 이미지 서버(:11602)는 요청을 내부 lock으로 직렬 처리한다. 앞 job이 생성 중일 때
+# 새 job이 바로 HTTP를 보내면 큐 대기 시간이 클라이언트 타임아웃(420s×n)을 잠식해
+# 두 번째 job이 구조적으로 실패한다(구도 변경 후 재생성 실패, 2026-06-12 QA).
+# 백엔드에서 먼저 줄을 세우고, 차례가 오면 created_at을 리셋해 stale 예산이
+# 실제 생성 시간만 재게 한다.
+_HYPERCLOVA_IMAGE_JOB_LOCK = threading.Lock()
 
 
 def _fail_stale_hyperclova_job(job: dict) -> dict:
-    if job.get("provider") != "hyperclova_image" or job.get("status") != "running":
+    if job.get("provider") != "hyperclova_image" or job.get("status") not in {"queued", "running"}:
         return job
+    if job.get("status") == "queued":
+        heartbeat = job.get("queued_heartbeat") or job.get("created_at") or 0
+        if time.time() - heartbeat <= _HYPERCLOVA_QUEUED_HEARTBEAT_STALE_SECONDS:
+            return job
+        job.update(
+            {
+                "status": "failed",
+                "error": "hyperclova image job stale: queued waiter thread lost (backend restarted?)",
+                "completed_at": int(time.time()),
+            }
+        )
+        return IMAGE_JOB_STORE.save(job)
     age = time.time() - (job.get("created_at") or 0)
     try:
         image_count = max(1, int(job.get("requested_image_count") or 1))
@@ -3294,7 +3314,33 @@ def _run_hyperclova_image_job(job_id: str, payload: dict, image_prompt: str) -> 
         current["message"] = f"3컷 순차 생성 중 — {done}/{total}컷 시도, {ok}장 완료"
         IMAGE_JOB_STORE.save(current)
 
+    acquired_immediately = _HYPERCLOVA_IMAGE_JOB_LOCK.acquire(blocking=False)
+    if not acquired_immediately:
+        # 앞 job이 생성 중 — HTTP를 보내지 않고 백엔드에서 대기(queued).
+        # 대기 중 heartbeat를 갱신해 thread 생존을 poll 쪽 stale 판정에 알린다.
+        job.update(
+            {
+                "status": "queued",
+                "message": "앞선 이미지 작업이 끝나면 자동으로 시작됩니다",
+                "queued_heartbeat": int(time.time()),
+            }
+        )
+        IMAGE_JOB_STORE.save(job)
+        while not _HYPERCLOVA_IMAGE_JOB_LOCK.acquire(timeout=15):
+            current = IMAGE_JOB_STORE.get(job_id) or job
+            if current.get("status") != "queued":
+                # poll 쪽 stale 판정 등으로 외부에서 종결됨 — 조용히 물러난다.
+                return
+            current["queued_heartbeat"] = int(time.time())
+            IMAGE_JOB_STORE.save(current)
     try:
+        # 차례가 온 시점부터 stale 예산이 실제 생성 시간만 재도록 created_at 리셋.
+        job = IMAGE_JOB_STORE.get(job_id) or job
+        job.pop("message", None)
+        job.pop("queued_heartbeat", None)
+        job.update({"status": "running", "created_at": int(time.time())})
+        job = IMAGE_JOB_STORE.save(job)
+
         from .runtime_workers import ensure_hyperclova_image_worker
 
         ensure_hyperclova_image_worker()
@@ -3314,6 +3360,8 @@ def _run_hyperclova_image_job(job_id: str, payload: dict, image_prompt: str) -> 
     except Exception as exc:
         job.pop("message", None)
         job.update({"status": "failed", "error": str(exc), "completed_at": int(time.time())})
+    finally:
+        _HYPERCLOVA_IMAGE_JOB_LOCK.release()
     saved_job = IMAGE_JOB_STORE.save(job)
     _cache_completed_image_job(saved_job)
 

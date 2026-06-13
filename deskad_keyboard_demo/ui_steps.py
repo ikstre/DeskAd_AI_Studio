@@ -614,13 +614,27 @@ def _render_ad_content_step(ctx: dict[str, Any]) -> None:
     poster_disabled = ctx["poster_waiting_for_image"]()
     poster_slot = col_poster.empty()
     if poster_slot.button("포스터 생성", type="primary", use_container_width=True, disabled=poster_disabled):
-        try:
-            ctx["generate_poster_live"](poster_slot)
-            st.success("포스터 생성 완료")
-            st.rerun()
-        except Exception as exc:
-            poster_slot.empty()
-            st.error(f"포스터 생성 실패: {exc}")
+        if ctx["has_completed_image_job"]():
+            try:
+                ctx["generate_poster_live"](poster_slot)
+                st.success("포스터 생성 완료")
+                st.rerun()
+            except Exception as exc:
+                poster_slot.empty()
+                st.error(f"포스터 생성 실패: {exc}")
+        else:
+            # 실사 이미지 없이 포스터를 먼저 누른 경우 — 이미지 작업부터 강제하고,
+            # 완료 시 auto_poster_after_image 예약으로 포스터까지 이어 생성한다(2026-06-12 QA).
+            try:
+                if not st.session_state.get("copy_result"):
+                    ctx["generate_copy_variants_live"](poster_slot)
+                ctx["generate_image_job"]()
+                st.session_state.auto_poster_after_image = True
+                st.info("실사 이미지 작업을 먼저 시작했습니다 — 이미지가 완료되면 포스터가 자동 생성됩니다.")
+                st.rerun()
+            except Exception as exc:
+                poster_slot.empty()
+                st.error(f"이미지 작업 시작 실패: {exc}")
     if poster_disabled:
         st.caption("이미지 작업이 완료되면 포스터 생성이 활성화됩니다.")
 

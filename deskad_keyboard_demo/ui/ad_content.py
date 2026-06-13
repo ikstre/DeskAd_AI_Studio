@@ -34,6 +34,10 @@ def poster_waiting_for_image() -> bool:
         return False
     return bool(st.session_state.image_job_result) and image_job_is_pending()
 
+def has_completed_image_job() -> bool:
+    """완료된 실사 이미지 작업이 있는지 — 포스터 생성 순서 강제(2026-06-12 QA)에 사용."""
+    return current_image_job_id() is not None
+
 def build_ad_payload() -> dict:
     payload = {
         **build_render_payload(),
@@ -283,7 +287,9 @@ def auto_poll_image_job() -> None:
 
     # 엔진별 통상 소요(초). 정확한 ETA가 아니라 "얼마나 기다리는 게 정상인지"의
     # 기준선 — 게이지는 97%에서 멈춰 완료를 단정하지 않는다(2026-06-11 이미지 QA).
-    expected = {"hyperclova_image": 420, "comfyui": 120, "openai_image": 90}.get(
+    # hyperclova: prefill + steps 30 적용 후 warm 장당 ~230s, 워커 적재 포함 ~300s
+    # (2026-06-13 GPU A/B 실측).
+    expected = {"hyperclova_image": 300, "comfyui": 120, "openai_image": 90}.get(
         str(job.get("provider") or ""), 180
     ) * image_count
     status_slot = st.empty()
@@ -311,11 +317,23 @@ def auto_poll_image_job() -> None:
     if updated.get("status") == "completed":
         st.session_state.image_polling_enabled = False
         st.session_state.image_poll_started_at = None
-        st.success("이미지 작업 완료. 포스터 생성에 자동으로 연결됩니다.")
+        if st.session_state.get("auto_poster_after_image"):
+            # 포스터 버튼이 이미지보다 먼저 눌린 경우의 예약 — 이미지 완료 즉시 포스터까지 이어서 생성(2026-06-12 QA).
+            st.session_state.auto_poster_after_image = False
+            try:
+                generate_poster()
+                st.success("이미지 완료 — 포스터까지 자동 생성했습니다.")
+            except Exception as exc:
+                st.error(f"포스터 자동 생성 실패: {exc} — '포스터 생성' 버튼으로 다시 시도하세요.")
+        else:
+            st.success("이미지 작업 완료. '포스터 생성'을 누르면 이미지가 합성됩니다.")
         st.rerun()
     elif updated.get("status") in IMAGE_JOB_TERMINAL_STATUSES:
         st.session_state.image_polling_enabled = False
         st.session_state.image_poll_started_at = None
+        if st.session_state.get("auto_poster_after_image"):
+            st.session_state.auto_poster_after_image = False
+            st.error("이미지 작업이 실패해 포스터 자동 생성을 취소했습니다. 이미지 재생성 후 다시 시도하세요.")
         st.rerun()
 
 def provider_label(provider: str | None) -> str:

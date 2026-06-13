@@ -67,6 +67,8 @@ DEFAULTS = {
     "image_polling_enabled": False,
     "image_poll_started_at": None,
     "image_poll_timeout_seconds": 600,
+    # 포스터 버튼이 이미지보다 먼저 눌렸을 때 이미지 완료 후 포스터 자동 생성 예약(2026-06-12 QA)
+    "auto_poster_after_image": False,
     "ui_theme_mode": DEFAULT_THEME_MODE,
     "ad_tone": "감성형",
     "shot_type": "",
