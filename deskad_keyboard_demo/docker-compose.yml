@@ -1,0 +1,84 @@
+# DeskAd 앱 티어(Phase 1) — FastAPI 백엔드 + Streamlit 프론트엔드 2서비스.
+#
+# 전제: GPU 워커(ComfyUI/Omni/SEED 등)는 호스트(systemd/Popen)에 그대로 떠 있고,
+#       앱 컨테이너는 GPU_WORKER_MODE=always_on으로 워커를 직접 띄우지 않고 HTTP 호출만 한다.
+#       GPU 워커 컨테이너화는 Phase 2(별도 작업).
+#
+# 외부 노출: 두 서비스 모두 호스트 127.0.0.1에만 바인딩(loopback). 외부 접속은
+#           호스트 nginx :8443(basic auth + TLS)가 127.0.0.1:8501로 프록시한다(security.md §5).
+#
+# 실행:  docker compose up -d --build
+# 확인:  curl -fsS http://127.0.0.1:8010/health  /  브라우저 https://<VM_IP>:8443
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: deskad-app:latest
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8010"]
+    env_file: .env
+    environment:
+      # 컨테이너에선 외부에서 관리되는 워커를 HTTP로만 호출한다(start/stop 안 함).
+      GPU_WORKER_MODE: always_on
+      # ── 호스트 GPU 워커 연결 ──────────────────────────────────────────────
+      # .env의 *_BASE_URL은 보통 http://127.0.0.1:<port>다. 컨테이너 안에서 127.0.0.1은
+      # "컨테이너 자신"을 가리키므로 호스트 워커에 닿지 않는다. 아래처럼 host.docker.internal로
+      # 덮어쓰거나(주석 해제), .env 자체를 host.docker.internal로 바꿔라. 포트/경로는 환경에 맞게.
+      # LOCAL_LLM_BASE_URL: http://host.docker.internal:11434/v1
+      # HYPERCLOVA_BASE_URL: http://host.docker.internal:11501/v1
+      # HYPERCLOVA_VISION_BASE_URL: http://host.docker.internal:11601/v1
+      # HYPERCLOVA_IMAGE_BASE_URL: http://host.docker.internal:11602/v1
+      # COMFYUI_BASE_URL: http://host.docker.internal:8188
+    extra_hosts:
+      # 컨테이너 → 호스트(GPU 워커) 접근용. Linux 호스트에서 host-gateway로 해석된다.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # 쓰기 런타임(세션·이미지 잡·users.json 등). 이미지에 굽지 않고 호스트에 보존.
+      - ./data/runtime:/app/data/runtime
+      # 생성물(uploads/models/posters). 프론트엔드가 model-viewer로 읽으므로 공유 필요.
+      - ./static:/app/static
+      # (선택) 공유 라이브러리 기능을 쓸 때만. 모델 weight는 굽지 말고 호스트 디렉터리를 마운트.
+      # - /opt/shared_data:/opt/shared_data
+      # - /opt/shared_model:/opt/shared_model
+    ports:
+      - "127.0.0.1:8010:8010"   # loopback 전용(프론트엔드/nginx만 접근)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8010/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    image: deskad-app:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - streamlit
+      - run
+      - streamlit_app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0          # 컨테이너 내부 바인딩. 외부 노출은 host 포트 매핑 + nginx.
+      - --server.headless=true
+      - --server.enableCORS=false
+      - --server.enableXsrfProtection=true
+    environment:
+      # 컨테이너 네트워크에서 백엔드는 서비스명으로 해석된다.
+      DESKAD_API_BASE: http://backend:8010
+      # 브라우저가 직접 받는 모델/포스터 URL용 외부 베이스(있으면). 미설정 시 DESKAD_API_BASE 사용.
+      # DESKAD_PUBLIC_API_BASE: https://<VM_IP>:8443
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8501:8501"   # loopback 전용. 외부는 호스트 nginx :8443 → 127.0.0.1:8501
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8501/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
