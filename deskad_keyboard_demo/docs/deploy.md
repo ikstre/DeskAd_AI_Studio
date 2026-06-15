@@ -27,7 +27,7 @@ FastAPI 백엔드 + Streamlit 프론트엔드(앱 티어)를 Docker로 띄우는
 
 ## 2. 사전 준비
 
-1. **Docker Engine + Compose 플러그인** 설치(`docker compose version`으로 확인).
+1. **Docker Engine + Compose 플러그인** 설치(`docker compose version`으로 확인). `sudo` 없이 쓰려면 `sudo usermod -aG docker $USER` 후 재로그인(아니면 `sudo docker …`로 실행).
 2. **`.env` 작성** — 이미지에 굽지 않고 런타임 주입합니다.
    ```bash
    cd deskad_keyboard_demo
@@ -40,6 +40,14 @@ FastAPI 백엔드 + Streamlit 프론트엔드(앱 티어)를 Docker로 띄우는
 ---
 
 ## 3. 빌드 & 실행
+
+> **검증됨(2026-06-15)**: 이 VM에서 `docker compose build` 성공(이미지 `deskad-app:latest`, 195MB, CPU-only). 컨테이너 단독 기동 시 `/health`·`/render/keyboard-preview`(키·GPU 없이 GLB) 200 확인. `.env`를 이미지에 굽지 않아 단독 기동 시 설정은 기본값으로 뜬다.
+>
+> **컷오버 주의**: 호스트에서 `start.sh`로 띄운 기존 앱이 `8010`/`8501`을 점유 중이면 컨테이너가 같은 포트를 바인딩하지 못한다. 컨테이너로 전환할 땐 먼저 호스트 앱을 내려라.
+> ```bash
+> ss -ltnp | grep -E ':8010|:8501'   # 점유 확인
+> bash start.sh --stop               # 호스트 앱 중지 후 compose 기동
+> ```
 
 ```bash
 cd deskad_keyboard_demo

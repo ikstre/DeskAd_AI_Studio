@@ -52,10 +52,10 @@ services:
     restart: unless-stopped
 
   frontend:
+    # 백엔드와 동일 이미지를 재사용한다(중복 빌드 + 같은 태그 동시 export 경합 방지).
+    # 이미지는 backend 서비스가 빌드하므로 여기선 빌드하지 않고 로컬 이미지를 그대로 쓴다.
     image: deskad-app:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
+    pull_policy: never
     command:
       - streamlit
       - run
