@@ -19,7 +19,7 @@ FastAPI 백엔드 + Streamlit 프론트엔드(앱 티어)를 Docker로 띄우는
 | (호스트) GPU 워커 | ComfyUI(8188) · Omni vision(11601) · Omni image(11602) · SEED(11501) · Ollama(11434) | `127.0.0.1` 전용 |
 
 - 두 컨테이너 모두 호스트 `127.0.0.1`에만 바인딩 → 직접 외부 노출 없음(보안 정책 유지, `docs/security.md` §5).
-- 프론트엔드는 컨테이너 네트워크에서 `http://backend:8010`(서비스명)으로 백엔드를 호출합니다(`DESKAD_API_BASE`).
+- 단일 호스트라 두 서비스는 `network_mode: host`로 호스트 네트워크를 공유합니다. 프론트엔드는 `http://127.0.0.1:8010`으로 백엔드를, 백엔드는 `.env`의 `127.0.0.1:<port>` 워커 URL을 그대로 호출합니다.
 
 관련 파일: `Dockerfile`, `.dockerignore`, `docker-compose.yml`.
 
@@ -41,9 +41,9 @@ FastAPI 백엔드 + Streamlit 프론트엔드(앱 티어)를 Docker로 띄우는
 
 ## 3. 빌드 & 실행
 
-> **검증됨(2026-06-15)**: 이 VM에서 `docker compose build` 성공(이미지 `deskad-app:latest`, 195MB, CPU-only). 컨테이너 단독 기동 시 `/health`·`/render/keyboard-preview`(키·GPU 없이 GLB) 200 확인. `.env`를 이미지에 굽지 않아 단독 기동 시 설정은 기본값으로 뜬다.
+> **컷오버 완료(2026-06-15)**: 이 VM에서 호스트 앱을 내리고 컨테이너로 전환·검증 완료 — backend/frontend 모두 healthy, `/health`·프론트(8501)·**nginx `:8443`** 200, `/ai/providers` 워커 wiring 정상(호스트 네트워크), bind 마운트 쓰기 OK(host UID로 빌드). 이미지 콘텐츠 ~195MB(CPU-only; `docker images`의 DISK USAGE 841MB는 빌드 캐시 포함). `.env`는 이미지에 굽지 않고 `env_file`로 주입한다.
 >
-> **컷오버 주의**: 호스트에서 `start.sh`로 띄운 기존 앱이 `8010`/`8501`을 점유 중이면 컨테이너가 같은 포트를 바인딩하지 못한다. 컨테이너로 전환할 땐 먼저 호스트 앱을 내려라.
+> **컷오버 주의**: 호스트에서 `start.sh`로 띄운 기존 앱이 `8010`/`8501`을 점유 중이면 같은 포트를 바인딩하지 못한다. 전환 전 먼저 호스트 앱을 내려라.
 > ```bash
 > ss -ltnp | grep -E ':8010|:8501'   # 점유 확인
 > bash start.sh --stop               # 호스트 앱 중지 후 compose 기동
@@ -51,7 +51,8 @@ FastAPI 백엔드 + Streamlit 프론트엔드(앱 티어)를 Docker로 띄우는
 
 ```bash
 cd deskad_keyboard_demo
-docker compose up -d --build
+# 호스트 계정 UID/GID로 빌드해야 bind 마운트에 쓸 수 있다(§4-1).
+DESKAD_UID=$(id -u) DESKAD_GID=$(id -g) docker compose up -d --build
 
 # 상태/로그
 docker compose ps
@@ -66,29 +67,26 @@ curl -fsS http://127.0.0.1:8501/ >/dev/null   # 프론트엔드 응답
 # 브라우저: https://<VM_IP>:8443  (호스트 nginx 경유)
 ```
 
-> 호스트 계정 UID가 1000이 아니면 bind 마운트 쓰기 권한을 위해 빌드 시 UID/GID를 맞추세요.
-> ```bash
-> docker compose build --build-arg UID=$(id -u) --build-arg GID=$(id -g)
-> ```
+> **되돌리기(호스트 앱으로 복귀)**: `docker compose down` 후 `bash start.sh`.
 
 ---
 
-## 4. 호스트 GPU 워커 연결 (중요)
+## 4. 호스트 GPU 워커 / UID
 
-컨테이너 안에서 `127.0.0.1`은 **컨테이너 자신**을 가리킵니다. `.env`의 워커 URL이
-`http://127.0.0.1:<port>`이면 호스트 워커에 닿지 않습니다. 둘 중 하나로 해결합니다.
+### 4-1. 빌드 UID (bind 마운트 쓰기)
+컨테이너 `appuser`는 빌드 인자 `UID`/`GID`로 만들어집니다(기본 1000). 호스트 계정 UID가 다르면
+bind 마운트(`./data/runtime`, `./static`)에 쓰지 못하므로 **호스트 UID로 빌드**해야 합니다:
+```bash
+DESKAD_UID=$(id -u) DESKAD_GID=$(id -g) docker compose up -d --build
+```
 
-- **(권장) `.env`의 `*_BASE_URL`을 `host.docker.internal`로** 변경
-  ```ini
-  LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1
-  HYPERCLOVA_BASE_URL=http://host.docker.internal:11501/v1
-  HYPERCLOVA_VISION_BASE_URL=http://host.docker.internal:11601/v1
-  HYPERCLOVA_IMAGE_BASE_URL=http://host.docker.internal:11602/v1
-  COMFYUI_BASE_URL=http://host.docker.internal:8188
-  ```
-- 또는 `docker-compose.yml`의 `backend.environment`에서 동일 키를 덮어쓰기(주석 해제).
+### 4-2. 워커 연결 (host 네트워크)
+`docker-compose.yml`은 `network_mode: host`라 컨테이너가 호스트 네트워크를 공유합니다. 따라서
+`.env`의 `*_BASE_URL`(`http://127.0.0.1:<port>`)이 **그대로** 호스트 워커(ComfyUI 8188 · Ollama 11434 ·
+SEED 11501 · Omni 11601/11602)에 닿습니다 — URL을 바꿀 필요가 없습니다.
 
-`docker-compose.yml`은 `extra_hosts: ["host.docker.internal:host-gateway"]`로 호스트를 해석합니다(Linux).
+- 워커가 떠 있지 않은 엔진은 실패하므로, 필요한 워커를 호스트에서 먼저 기동하세요.
+- 앱·워커를 **다른 호스트로 분리**한다면 host 네트워크 대신 bridge + `host.docker.internal`(또는 실제 워커 호스트 URL)로 `.env`를 조정하세요.
 
 ---
 
