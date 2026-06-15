@@ -4,8 +4,10 @@ from __future__ import annotations
 import base64
 from html import escape
 from pathlib import Path
+from urllib.parse import urlparse
 
-from fastapi.responses import HTMLResponse
+from fastapi import Query
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .ai import (
     IMAGE_JOB_STORE,
@@ -48,6 +50,7 @@ from .runtime_workers import activate_track
 from .schemas import (
     ActivateTrackRequest,
     AdContentRequest,
+    CookieCodeRequest,
     CopyExperimentRequest,
     DeskSetupRenderRequest,
     KeyboardRenderRequest,
@@ -55,7 +58,9 @@ from .schemas import (
     LoginRequest,
     LoginResponse,
     LogoutRequest,
+    SessionRequest,
     SignupRequest,
+    SignupResponse,
     PlateDrawingRenderRequest,
     UploadedModelRequest,
 )
@@ -67,6 +72,8 @@ MODEL_DIR = STATIC_DIR / "models"
 UPLOAD_DIR = STATIC_DIR / "uploads"
 POSTER_DIR = STATIC_DIR / "posters"
 DATA_DIR = BASE_DIR / "data"
+AUTH_COOKIE_NAME = "deskad_auth"
+DEFAULT_COOKIE_REDIRECT = "http://localhost:8501/"
 
 ensure_static_dirs(MODEL_DIR, UPLOAD_DIR, POSTER_DIR)
 app = create_app(STATIC_DIR)
@@ -76,6 +83,16 @@ register_routes(app)
 def _settings_base_url() -> str:
     """설정된 public API base URL을 정규화해 static URL 생성에 사용한다."""
     return get_settings().public_api_base_url.rstrip("/")
+
+
+def _safe_auth_redirect(next_url: str | None) -> str:
+    """쿠키 설정/삭제 후 이동할 URL을 localhost 계열로 제한한다."""
+    if not next_url:
+        return DEFAULT_COOKIE_REDIRECT
+    parsed = urlparse(next_url)
+    if parsed.scheme in ("http", "https") and parsed.hostname in ("localhost", "127.0.0.1"):
+        return next_url
+    return DEFAULT_COOKIE_REDIRECT
 
 
 def _layout_path(layout: str) -> Path:
@@ -110,7 +127,7 @@ def auth_login(request: LoginRequest):
     return auth.login(request.username, request.password)
 
 
-@app.post("/auth/signup", response_model=LoginResponse)
+@app.post("/auth/signup", response_model=SignupResponse)
 def auth_signup(request: SignupRequest):
     """가입 코드 검증 후 사용자를 등록한다. 성공 시 곧바로 세션 토큰 발급(자동 로그인).
 
@@ -123,6 +140,44 @@ def auth_signup(request: SignupRequest):
 def auth_logout(request: LogoutRequest):
     """세션 토큰을 무효화한다. 이미 없던 토큰이어도 200으로 응답한다."""
     return {"ok": auth.logout(request.token)}
+
+
+@app.post("/auth/session", response_model=LoginResponse)
+def auth_session(request: SessionRequest):
+    """새로고침 후 남아 있는 세션 토큰을 검증하고 UI 복원 정보를 반환한다."""
+    return auth.session_info(request.token)
+
+
+@app.post("/auth/cookie-code")
+def auth_cookie_code(request: CookieCodeRequest):
+    """서버 세션 토큰을 브라우저 HttpOnly cookie 설정용 일회용 코드로 교환한다."""
+    return auth.issue_cookie_exchange_code(request.token)
+
+
+@app.get("/auth/cookie")
+def auth_cookie(code: str = Query(min_length=1, max_length=128), next: str | None = None):
+    """브라우저가 직접 방문해 HttpOnly 인증 cookie를 설정한 뒤 Streamlit으로 돌아간다."""
+    redirect = RedirectResponse(_safe_auth_redirect(next), status_code=303)
+    result = auth.consume_cookie_exchange_code(code)
+    if result.get("ok") and result.get("token"):
+        redirect.set_cookie(
+            AUTH_COOKIE_NAME,
+            result["token"],
+            max_age=auth.SESSION_TTL_SECONDS,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+            path="/",
+        )
+    return redirect
+
+
+@app.get("/auth/clear-cookie")
+def auth_clear_cookie(next: str | None = None):
+    """브라우저 인증 cookie를 삭제한 뒤 Streamlit으로 돌아간다."""
+    redirect = RedirectResponse(_safe_auth_redirect(next), status_code=303)
+    redirect.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    return redirect
 
 
 @app.get("/security/config")

@@ -6,6 +6,7 @@ import base64
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlencode, urlparse, urlunparse
 
 import requests
 import streamlit as st
@@ -123,6 +124,51 @@ def api_logout(token: str) -> dict:
         return api_post("/auth/logout", {"token": token}, timeout=10)
     except Exception:
         return {"ok": False}
+
+
+def api_validate_session(token: str) -> dict:
+    """/auth/session 호출 — 새로고침 후 남은 토큰이 아직 유효한지 확인한다."""
+    try:
+        return api_post("/auth/session", {"token": token}, timeout=10)
+    except Exception:
+        return {"ok": False, "error": "request_failed"}
+
+
+def api_create_cookie_code(token: str) -> dict:
+    """/auth/cookie-code 호출 — HttpOnly cookie 설정용 일회용 코드를 발급받는다."""
+    try:
+        return api_post("/auth/cookie-code", {"token": token}, timeout=10)
+    except Exception:
+        return {"ok": False, "error": "request_failed"}
+
+
+def _streamlit_url() -> str:
+    url = getattr(st.context, "url", "") or "http://localhost:8501/"
+    return str(url)
+
+
+def _browser_api_base() -> str:
+    """브라우저 cookie 호스트가 Streamlit 호스트와 맞도록 public API base를 보정한다."""
+    streamlit_host = urlparse(_streamlit_url()).hostname
+    parsed = urlparse(PUBLIC_API_BASE)
+    if streamlit_host in ("localhost", "127.0.0.1") and parsed.hostname in ("localhost", "127.0.0.1"):
+        netloc = streamlit_host
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        return urlunparse(parsed._replace(netloc=netloc)).rstrip("/")
+    return PUBLIC_API_BASE
+
+
+def auth_cookie_url(code: str) -> str:
+    """브라우저가 직접 방문할 HttpOnly cookie 설정 URL을 만든다."""
+    query = urlencode({"code": code, "next": _streamlit_url()})
+    return f"{_browser_api_base()}/auth/cookie?{query}"
+
+
+def clear_auth_cookie_url() -> str:
+    """브라우저가 직접 방문할 HttpOnly cookie 삭제 URL을 만든다."""
+    query = urlencode({"next": _streamlit_url()})
+    return f"{_browser_api_base()}/auth/clear-cookie?{query}"
 
 
 def activate_engine_track(track: str) -> dict:

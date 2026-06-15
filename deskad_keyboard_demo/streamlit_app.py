@@ -7,7 +7,7 @@ import streamlit as st
 
 from ui.components import render_campaign_studio_header
 from ui.context import build_step_ui_context
-from ui.login import is_authenticated, render_login_page
+from ui.login import render_login_page, restore_auth_from_cookie
 from ui.result_panel import render_result_panel
 from ui.sidebar import render_sidebar
 from ui.state import (
@@ -30,7 +30,7 @@ st.set_page_config(
 render_base_layout_styles()
 initialize_session_defaults()
 
-if not is_authenticated():
+if not restore_auth_from_cookie():
     render_login_page()
     st.stop()
 
