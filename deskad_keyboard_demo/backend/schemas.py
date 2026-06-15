@@ -33,7 +33,7 @@ class SignupResponse(LoginResponse):
 class SignupRequest(BaseModel):
     """회원가입 요청을 검증한다 — 가입 코드(.env DESKAD_SIGNUP_CODE) 필수."""
 
-    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_\-]+$")
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9]+$")
     password: str = Field(min_length=8, max_length=128)
     signup_code: str = Field(min_length=1, max_length=64)
 

@@ -192,7 +192,7 @@ def _render_step_content(ctx: dict, go_previous, go_next) -> None:
             _render_edit_panel(ctx, go_previous, go_next)
         return
 
-    preview_col, edit_col = st.columns([0.44, 0.56], gap="large")
+    preview_col, edit_col = st.columns([0.52, 0.48], gap="large")
     with preview_col:
         _render_ad_preview()
     with edit_col:

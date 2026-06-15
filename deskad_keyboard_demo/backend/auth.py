@@ -26,7 +26,7 @@ LOCKOUT_SECONDS = 60.0
 PBKDF2_ITERATIONS = 200_000
 PASSWORD_MIN_LENGTH = 8
 COOKIE_EXCHANGE_TTL_SECONDS = 60.0
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_\-]{3,32}$")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9]{3,32}$")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_USERS_PATH = BASE_DIR / "data" / "runtime" / "users.json"

@@ -525,6 +525,57 @@ def render_base_layout_styles() -> None:
             color: rgba(226, 232, 240, 0.86);
             line-height: 1.45;
           }
+          .ad-preview-grid-shots {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+          }
+          .grid-shot {
+            display: grid;
+            align-content: end;
+            min-height: 118px;
+            padding: 12px 10px;
+            border-radius: 14px;
+            background:
+              linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.12)),
+              rgba(15, 23, 42, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            overflow: hidden;
+          }
+          .grid-shot b {
+            display: inline-flex;
+            width: fit-content;
+            margin-bottom: 8px;
+            padding: 4px 7px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.18);
+            color: rgba(255, 255, 255, 0.92);
+            font-size: 10px;
+            line-height: 1;
+          }
+          .grid-shot span {
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
+          }
+          .grid-shot-product {
+            background:
+              radial-gradient(circle at 76% 22%, rgba(147, 197, 253, 0.34), transparent 34%),
+              rgba(255, 255, 255, 0.14);
+          }
+          .grid-shot-space {
+            background:
+              radial-gradient(circle at 72% 18%, rgba(45, 212, 191, 0.28), transparent 34%),
+              rgba(255, 255, 255, 0.12);
+          }
+          .grid-shot-point {
+            background:
+              radial-gradient(circle at 72% 18%, rgba(251, 191, 36, 0.28), transparent 34%),
+              rgba(255, 255, 255, 0.12);
+          }
           .ad-preview-spec {
             padding: 14px;
             border-radius: 12px;
@@ -617,6 +668,9 @@ def render_base_layout_styles() -> None:
             .creative-strip {
               grid-template-columns: 1fr;
             }
+            .ad-preview-grid-shots {
+              grid-template-columns: 1fr;
+            }
           }
         </style>
         """,
@@ -655,6 +709,11 @@ def render_ui_theme_styles(theme_mode: str | None) -> None:
           [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {{
             background: transparent !important;
             border-color: rgba(248, 251, 255, 0.20) !important;
+            color: {tokens["sidebar_text"]} !important;
+          }}
+          [data-testid="stSidebar"] [data-testid="stExpander"] *,
+          [data-testid="stSidebar"] [data-testid="stExpanderDetails"] *,
+          [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] * {{
             color: {tokens["sidebar_text"]} !important;
           }}
           [data-testid="stSidebar"] [data-testid="stExpander"] summary {{

@@ -502,19 +502,32 @@ def render_ad_card_preview_section() -> None:
         template_note = html.escape(str(template_label).split(" (")[0])
         side_panel = ""
         if template_key == "grid_three":
-            product_tile = html.escape(product_name[:18])
+            product_tile = html.escape(product_name[:22])
+            selling_tile = html.escape((selling_point or "핵심 특징 입력 대기")[:28])
+            channel_tile = html.escape(target_channel[:18])
             side_panel = f"""
               <div class="ad-preview-grid-panel" aria-label="grid template preview">
                 <div class="ad-preview-grid-hero">
                   <span>FEATURED SETUP</span>
                   <strong>{product_tile}</strong>
                 </div>
-                <div class="ad-preview-grid">
-                  <span>키보드</span><span>책상</span><span>무드</span>
+                <div class="ad-preview-grid-shots">
+                  <div class="grid-shot grid-shot-product">
+                    <b>제품</b>
+                    <span>{product_tile}</span>
+                  </div>
+                  <div class="grid-shot grid-shot-space">
+                    <b>공간</b>
+                    <span>{channel_tile}</span>
+                  </div>
+                  <div class="grid-shot grid-shot-point">
+                    <b>포인트</b>
+                    <span>{selling_tile}</span>
+                  </div>
                 </div>
                 <div class="ad-preview-grid-note">
                   <b>3컷 구성</b>
-                  <small>제품, 사용 환경, 핵심 포인트를 한 카드에 배치</small>
+                  <small>제품, 사용 환경, 핵심 포인트를 각각 분리해 비교합니다.</small>
                 </div>
               </div>
             """

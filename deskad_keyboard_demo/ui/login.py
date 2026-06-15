@@ -9,16 +9,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from .api_client import (
-    api_create_cookie_code,
     api_login,
     api_logout,
     api_signup,
     api_validate_session,
-    auth_cookie_url,
-    clear_auth_cookie_url,
 )
 
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_\-]{3,32}$")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9]{3,32}$")
 PASSWORD_MIN_LENGTH = 8
 AUTH_COOKIE_NAME = "deskad_auth"
 
@@ -49,19 +46,6 @@ def _auth_cookie_value() -> str | None:
     return st.context.cookies.get(AUTH_COOKIE_NAME)
 
 
-def _redirect_browser(url: str) -> None:
-    """브라우저를 FastAPI cookie 설정/삭제 엔드포인트로 이동시킨다."""
-    safe_url = url.replace("\\", "\\\\").replace("'", "\\'")
-    components.html(
-        f"""
-        <script>
-          window.top.location.href = '{safe_url}';
-        </script>
-        """,
-        height=0,
-    )
-
-
 def _store_login_success(result: dict, fallback_name: str) -> None:
     st.session_state.auth_token = result["token"]
     st.session_state.auth_display_name = result.get("display_name") or fallback_name
@@ -90,11 +74,6 @@ restore_auth_from_query = restore_auth_from_cookie
 
 def _complete_login(result: dict, fallback_name: str) -> None:
     _store_login_success(result, fallback_name)
-    code_result = api_create_cookie_code(result["token"])
-    if not code_result.get("ok") or not code_result.get("code"):
-        st.error("로그인 cookie를 설정하지 못했습니다. 서버 상태를 확인해주세요.")
-        return
-    _redirect_browser(auth_cookie_url(code_result["code"]))
 
 
 def _login_error_message(result: dict) -> str:
@@ -117,7 +96,7 @@ def _signup_error_message(result: dict) -> str:
     if error == "invalid_signup_code":
         return "가입 코드가 올바르지 않습니다."
     if error == "invalid_username":
-        return "아이디는 3~32자의 영문/숫자/밑줄(_)/하이픈(-)만 사용할 수 있습니다."
+        return "아이디는 3~32자의 영문과 숫자만 사용할 수 있습니다."
     if error == "weak_password":
         return f"비밀번호는 {PASSWORD_MIN_LENGTH}자 이상이어야 합니다."
     if error == "username_taken":
@@ -127,10 +106,60 @@ def _signup_error_message(result: dict) -> str:
     return "회원가입에 실패했습니다. 입력값을 확인해주세요."
 
 
+def _render_capslock_detector(component_key: str) -> None:
+    """비밀번호 입력 중 CapsLock 상태를 브라우저에서 감지해 안내한다."""
+    components.html(
+        f"""
+        <div id="capslock-warning-{component_key}" style="
+          display:none;
+          margin: -2px 0 8px 0;
+          padding: 8px 10px;
+          border-radius: 8px;
+          background: #fff7ed;
+          border: 1px solid #fdba74;
+          color: #9a3412;
+          font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        ">
+          CapsLock이 켜져 있습니다. 비밀번호 대소문자를 확인해주세요.
+        </div>
+        <script>
+          const warning = document.getElementById("capslock-warning-{component_key}");
+          const setWarning = (event) => {{
+            if (!event || typeof event.getModifierState !== "function") return;
+            warning.style.display = event.getModifierState("CapsLock") ? "block" : "none";
+          }};
+          const hideWarning = () => {{
+            warning.style.display = "none";
+          }};
+          try {{
+            const parentDoc = window.parent.document;
+            parentDoc.addEventListener("keydown", (event) => {{
+              const target = event.target;
+              if (target && target.matches && target.matches('input[type="password"]')) {{
+                setWarning(event);
+              }}
+            }}, true);
+            parentDoc.addEventListener("keyup", (event) => {{
+              const target = event.target;
+              if (target && target.matches && target.matches('input[type="password"]')) {{
+                setWarning(event);
+              }}
+            }}, true);
+            parentDoc.addEventListener("focusout", hideWarning, true);
+          }} catch (error) {{
+            hideWarning();
+          }}
+        </script>
+        """,
+        height=44,
+    )
+
+
 def _render_login_form() -> None:
     with st.form("login_form"):
-        username = st.text_input("아이디", autocomplete="username")
+        username = st.text_input("아이디", autocomplete="username", help="3~32자, 영문과 숫자만 입력")
         password = st.text_input("비밀번호", type="password", autocomplete="current-password")
+        _render_capslock_detector("login")
         submitted = st.form_submit_button("로그인", use_container_width=True, type="primary")
 
     if not submitted:
@@ -139,23 +168,28 @@ def _render_login_form() -> None:
     if not username or not password:
         st.error("아이디와 비밀번호를 모두 입력해주세요.")
         return
+    if not USERNAME_PATTERN.fullmatch(username):
+        st.error(_signup_error_message({"error": "invalid_username"}))
+        return
 
     result = api_login(username, password)
     if result.get("ok") and result.get("token"):
         _complete_login(result, username)
-        st.stop()
+        st.rerun()
     st.session_state.login_fail_count = int(st.session_state.get("login_fail_count") or 0) + 1
     st.error(_login_error_message(result))
 
 
 def _render_signup_form() -> None:
     with st.form("signup_form"):
-        username = st.text_input("아이디", help="3~32자, 영문/숫자/밑줄(_)/하이픈(-)")
+        username = st.text_input("아이디", help="3~32자, 영문과 숫자만 입력")
         password = st.text_input(
             "비밀번호", type="password", help=f"{PASSWORD_MIN_LENGTH}자 이상",
             autocomplete="new-password",
         )
+        _render_capslock_detector("signup_password")
         password_confirm = st.text_input("비밀번호 확인", type="password", autocomplete="new-password")
+        _render_capslock_detector("signup_confirm")
         signup_code = st.text_input("가입 코드", type="password", help="관리자에게 받은 코드를 입력하세요.")
         submitted = st.form_submit_button("회원가입", use_container_width=True, type="primary")
 
@@ -179,7 +213,7 @@ def _render_signup_form() -> None:
     if result.get("ok") and result.get("token"):
         # 가입 즉시 자동 로그인.
         _complete_login(result, username)
-        st.stop()
+        st.rerun()
     st.error(_signup_error_message(result))
 
 
@@ -193,29 +227,31 @@ def _render_login_page_styles() -> None:
           }
 
           .block-container {
-            max-width: 1180px;
-            padding-top: 4.5rem;
+            max-width: min(1360px, 94vw);
+            padding-top: 3.4rem;
             padding-bottom: 3rem;
           }
 
           .deskad-login-shell {
             min-height: calc(100vh - 8rem);
             display: grid;
-            grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.8fr);
-            gap: 34px;
+            grid-template-columns: minmax(520px, 1.35fr) minmax(380px, 0.65fr);
+            gap: 42px;
             align-items: center;
           }
 
           .deskad-login-brand {
-            min-height: 520px;
-            border: 1px solid rgba(96, 165, 250, 0.22);
-            border-radius: 18px;
-            padding: 42px;
+            min-height: 640px;
+            border: 1px solid rgba(125, 211, 252, 0.22);
+            border-radius: 22px;
+            padding: 58px 60px;
             background:
-              radial-gradient(circle at 18% 18%, rgba(96, 165, 250, 0.28), transparent 34%),
-              linear-gradient(135deg, #183552 0%, #244c68 48%, #2f8398 100%);
+              linear-gradient(90deg, rgba(8, 13, 24, 0.88) 0%, rgba(8, 13, 24, 0.58) 54%, rgba(8, 13, 24, 0.18) 100%),
+              radial-gradient(circle at 82% 24%, rgba(56, 189, 248, 0.36), transparent 32%),
+              radial-gradient(circle at 18% 78%, rgba(37, 99, 235, 0.26), transparent 34%),
+              linear-gradient(135deg, #0b1220 0%, #183552 44%, #2f8398 100%);
             color: #ffffff;
-            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.18);
+            box-shadow: 0 30px 90px rgba(15, 23, 42, 0.24);
             overflow: hidden;
             position: relative;
           }
@@ -223,12 +259,16 @@ def _render_login_page_styles() -> None:
           .deskad-login-brand::after {
             content: "";
             position: absolute;
-            right: -80px;
-            bottom: -80px;
-            width: 260px;
-            height: 260px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.12);
+            right: 48px;
+            bottom: 44px;
+            width: 250px;
+            height: 160px;
+            border-radius: 18px;
+            background:
+              linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04)),
+              rgba(15, 23, 42, 0.24);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: 0 24px 64px rgba(2, 6, 23, 0.22);
           }
 
           .deskad-login-kicker {
@@ -246,34 +286,55 @@ def _render_login_page_styles() -> None:
           }
 
           .deskad-login-brand h1 {
-            margin: 30px 0 14px 0;
-            font-size: 44px;
-            line-height: 1.12;
+            max-width: 720px;
+            margin: 34px 0 18px 0;
+            font-size: 64px;
+            line-height: 1.04;
             letter-spacing: 0;
           }
 
           .deskad-login-brand p {
-            max-width: 520px;
+            max-width: 640px;
             margin: 0;
-            color: rgba(255, 255, 255, 0.76);
-            font-size: 17px;
-            line-height: 1.75;
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 19px;
+            line-height: 1.7;
+          }
+
+          .deskad-login-hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 30px;
+          }
+
+          .deskad-login-hero-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 34px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.10);
+            color: rgba(255, 255, 255, 0.82);
+            font-size: 13px;
+            font-weight: 700;
           }
 
           .deskad-login-feature-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
-            margin-top: 44px;
-            max-width: 600px;
+            margin-top: 64px;
+            max-width: 700px;
           }
 
           .deskad-login-feature {
-            min-height: 112px;
-            padding: 16px;
+            min-height: 104px;
+            padding: 15px;
             border-radius: 14px;
             border: 1px solid rgba(255, 255, 255, 0.16);
-            background: rgba(15, 23, 42, 0.20);
+            background: rgba(15, 23, 42, 0.28);
             backdrop-filter: blur(8px);
           }
 
@@ -292,7 +353,7 @@ def _render_login_page_styles() -> None:
           .deskad-login-card {
             border: 1px solid rgba(148, 163, 184, 0.32);
             border-radius: 18px;
-            padding: 34px 34px 28px;
+            padding: 36px 34px 30px;
             background: rgba(255, 255, 255, 0.88);
             box-shadow: 0 22px 64px rgba(15, 23, 42, 0.12);
           }
@@ -372,7 +433,7 @@ def _render_login_page_styles() -> None:
             }
 
             .deskad-login-brand h1 {
-              font-size: 34px;
+              font-size: 40px;
             }
 
             .deskad-login-feature-grid {
@@ -395,11 +456,16 @@ def render_login_page() -> None:
             """
             <section class="deskad-login-brand">
               <div class="deskad-login-kicker">Campaign Production Studio</div>
-              <h1>DeskAd AI Studio</h1>
+              <h1>키보드 광고 제작을 한 화면에서 끝내세요.</h1>
               <p>
-                3D 데스크 셋업부터 광고 문구, 이미지 작업, 포스터 제작까지
-                한 흐름으로 검수하는 캠페인 제작 도구입니다.
+                제품 정보, 3D 데스크 셋업, 광고 문구, 이미지 작업, 포스터 제작을
+                단계별로 이어서 검수하는 DeskAd AI 제작 스튜디오입니다.
               </p>
+              <div class="deskad-login-hero-actions">
+                <span class="deskad-login-hero-pill">3D 셋업 기반</span>
+                <span class="deskad-login-hero-pill">문구 후보 비교</span>
+                <span class="deskad-login-hero-pill">포스터 결과 검수</span>
+              </div>
               <div class="deskad-login-feature-grid">
                 <div class="deskad-login-feature">
                   <strong>3D 셋업</strong>
@@ -452,5 +518,4 @@ def logout() -> None:
     st.session_state.auth_token = None
     st.session_state.auth_display_name = None
     st.session_state.auth_expires_at = None
-    _redirect_browser(clear_auth_cookie_url())
-    st.stop()
+    st.rerun()
