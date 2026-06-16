@@ -1324,11 +1324,11 @@ LAYOUT_PROMPT_LABELS = {
 # Omni 충실도 그라운딩(2026-06-15): 배열별 '행 구조'를 명시해 행 무너짐/배열 붕괴를 줄인다.
 # (Omni는 도면 픽셀 조건화가 불가 → 백엔드가 아는 정확한 배열을 텍스트로 박아 '실제 제품'에 가깝게.)
 _LAYOUT_ROW_SPEC_EN = {
-    "60": "exactly 5 ANSI-staggered rows, no function row, no dedicated arrow cluster, no number pad",
-    "65": "exactly 5 ANSI-staggered rows plus a dedicated right-side arrow cluster, no function row, no number pad",
-    "75": "6 rows including a top function row with arrow keys at the bottom-right, gapless compact, no number pad",
-    "87": "6 rows including a full top function row and a dedicated arrow cluster, tenkeyless, no number pad",
-    "104": "6 rows: a full function row, the main block, a dedicated arrow cluster, and a full right-side number pad",
+    "60": "exactly 5 ANSI-staggered rows in one compact main block; no function row, no arrow cluster, no detached navigation cluster, no number pad",
+    "65": "exactly 5 ANSI-staggered rows in one compact main block plus a small right-side arrow cluster; no function row, no number pad",
+    "75": "6 rows including a top function row, compact main block, arrow keys at bottom-right, gapless compact; no number pad",
+    "87": "TKL tenkeyless: main typing block, full top function row, navigation/edit cluster, and arrow cluster; no number pad",
+    "104": "full-size 104-key board, not compact: main typing block, full function row, navigation/edit cluster, arrow cluster, and full right-side 17-key number pad",
 }
 # 키캡 프로파일 기하 — 특히 Cherry의 'sculpted(행마다 높이/기울기 다름)'를 명시해 키캡 높이 부정확을 교정.
 # (Omni 1400자 예산 안에 들어가도록 간결하게.)
@@ -1494,6 +1494,7 @@ def build_image_prompt(payload: dict, copy_result: dict) -> str:
         reference = "procedural 3D preview"
     layout = sanitize_user_text(payload.get("layout", "65"), limit=10)
     layout_label = LAYOUT_PROMPT_LABELS.get(layout, f"{layout}% custom keyboard layout")
+    layout_geometry = _LAYOUT_ROW_SPEC_EN.get(layout, f"straight, evenly aligned rows for a {layout}% layout")
     # 넘패드는 풀배열(104, full-size)만 가짐 → "넘패드 없음" 제약을 전 배열에 일괄 적용하면
     # 풀배열이 깨진다. 배열별로 넘패드 양성/음성 신호를 갈라 준다(컴팩트=넘패드 금지, 풀=넘패드 필수).
     layout_has_numpad = layout == "104"
@@ -1589,7 +1590,7 @@ def build_image_prompt(payload: dict, copy_result: dict) -> str:
         "[keyboard fidelity] anatomically correct mechanical keyboard, exact key count for the layout, "
         "evenly aligned keycaps in straight rows, crisp readable keycap legends, accurate proportions. ",
         # 배열별 넘패드 제약(컴팩트=금지/풀=필수) → 65% 입력에 풀사이즈가 나오는 오프-브리프 방지
-        f"[layout fidelity] {layout_constraint}",
+        f"[layout fidelity] {layout_constraint} Physical block structure: {layout_geometry}. ",
         inventory,
         # 구도(angle)는 오프닝 문장에 이미 명시 → 여기선 무드·프레이밍만 (중복 제거)
         # 디테일 컷(macro)을 빼면 키보드 전체가 잘리지 않고 프레임 안에 다 들어오도록 강제(부분 크롭은 디테일 컷 몫).
@@ -2980,6 +2981,10 @@ def _image_backend_config() -> dict:
         "local_image_endpoint": "set" if settings.local_image_endpoint else "missing",
         "comfyui_base_url": "set" if settings.comfyui_base_url else "missing",
         "comfyui_workflow_path": "set" if settings.comfyui_workflow_path else "missing",
+        "comfyui_steps": settings.comfyui_steps,
+        "comfyui_composition_steps": settings.comfyui_composition_steps,
+        "comfyui_img2img_denoise": settings.comfyui_img2img_denoise,
+        "comfyui_composition_denoise": settings.comfyui_composition_denoise,
         "flux_model_variant": settings.flux_model_variant or "unset",
         "image_quantization": settings.image_quantization or "unset",
         "enable_vae_tiling": settings.enable_vae_tiling,
@@ -3065,15 +3070,29 @@ def _select_workflow_path(payload: dict) -> Path | None:
     return _resolve_workflow_path(settings.comfyui_workflow_path)
 
 
-def _workflow_placeholder_mapping(settings, image_prompt: str, width: int, height: int, *, denoise: float | None = None) -> dict:
+def _workflow_placeholder_mapping(
+    settings,
+    image_prompt: str,
+    width: int,
+    height: int,
+    *,
+    denoise: float | None = None,
+    steps: int | None = None,
+) -> dict:
     """Build {key}/{{key}} → value map for workflow placeholder substitution."""
     seed = int(time.time() * 1000) % 2147483647
+    sampler_steps = settings.comfyui_steps if steps is None else steps
+    try:
+        sampler_steps = max(1, min(int(sampler_steps), 80))
+    except (TypeError, ValueError):
+        sampler_steps = 4
     values = {
         "prompt": image_prompt,
         "negative_prompt": settings.comfyui_negative_prompt,
         "width": width,
         "height": height,
         "seed": seed,
+        "steps": sampler_steps,
         "flux_model_variant": settings.flux_model_variant,
         "image_quantization": settings.image_quantization,
         "lora_name": settings.comfyui_lora_name,
@@ -3159,8 +3178,10 @@ def _load_comfyui_workflow(payload: dict, image_prompt: str) -> dict | None:
     width, height = _image_dimensions(payload)
     # 셋업 구도 맵(평면 색블록)은 라인아트 도면보다 높은 denoise라야 사실감이 생긴다.
     # → 구도 맵 레퍼런스면 composition denoise, 그 외(도면)는 기존 img2img denoise.
-    denoise = settings.comfyui_composition_denoise if payload.get("reference_is_composition") else None
-    mapping = _workflow_placeholder_mapping(settings, image_prompt, width, height, denoise=denoise)
+    is_composition_ref = bool(payload.get("reference_is_composition"))
+    denoise = settings.comfyui_composition_denoise if is_composition_ref else None
+    steps = settings.comfyui_composition_steps if is_composition_ref else None
+    mapping = _workflow_placeholder_mapping(settings, image_prompt, width, height, denoise=denoise, steps=steps)
     workflow_text = workflow_path.read_text(encoding="utf-8")
     # img2img: 워크플로가 {reference_image_name}을 참조하면 선택 도면을 ComfyUI에
     # 업로드해 그 파일명으로 치환한다. 레퍼런스가 없거나 업로드 실패면 워크플로를

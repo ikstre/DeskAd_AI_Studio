@@ -27,16 +27,17 @@
 | `{negative_prompt}` | `COMFYUI_NEGATIVE_PROMPT` | 미설정 시 기본 부정 프롬프트 |
 | `{width}` `{height}` | 요청 비율 → 픽셀 | |
 | `{seed}` | 요청 시각 기반 | 한 요청 내 동일 seed |
+| `{steps}` | `COMFYUI_STEPS` / `COMFYUI_COMPOSITION_STEPS` | int. 셋업 구도 맵 reference는 composition steps 사용 |
 | `{flux_model_variant}` | `FLUX_MODEL_VARIANT` | |
 | `{image_quantization}` | `IMAGE_QUANTIZATION` | |
 | `{lora_name}` | `COMFYUI_LORA_NAME` | 빈 값이면 no-op |
 | `{lora_strength}` | `COMFYUI_LORA_STRENGTH` | float (기본 0.0) |
 | `{controlnet_image}` | `COMFYUI_CONTROLNET_IMAGE` | 빈 값이면 no-op |
 | `{controlnet_strength}` | `COMFYUI_CONTROLNET_STRENGTH` | float (기본 0.0) |
-| `{denoise}` | `COMFYUI_IMG2IMG_DENOISE` | float (기본 0.65). img2img KSampler용 |
-| `{reference_image_name}` | 선택 도면 자동 업로드 | 워크플로에 이 토큰이 있으면 `_reference_image_b64`의 래스터 도면을 ComfyUI `/upload/image`에 올려 LoadImage 파일명으로 치환. 레퍼런스 없으면 워크플로 미구동(draft) |
+| `{denoise}` | `COMFYUI_IMG2IMG_DENOISE` / `COMFYUI_COMPOSITION_DENOISE` | float. 셋업 구도 맵 reference는 composition denoise 사용 |
+| `{reference_image_name}` | 선택 도면/셋업 구도 맵 자동 업로드 | 워크플로에 이 토큰이 있으면 `_reference_image_b64`의 래스터를 ComfyUI `/upload/image`에 올려 LoadImage 파일명으로 치환. 레퍼런스 없으면 워크플로 미구동(draft) |
 
-부정 프롬프트와 LoRA 이름은 이미지 캐시 키(`make_image_cache_key`)에도 반영되어,
+부정 프롬프트, LoRA 이름, denoise, steps는 이미지 캐시 키(`make_image_cache_key`)에도 반영되어,
 값이 바뀌면 기존 캐시를 재사용하지 않고 새로 생성한다.
 
 ## 포함된 워크플로
@@ -45,11 +46,11 @@
 `theme`(minimal/pastel/premium/gaming)이다. 템플릿 전용 워크플로가 있으면
 `flux_<poster_template>.json`이 먼저 선택되고, 없으면 아래 `flux_<theme>.json`으로 자동 라우팅된다.
 
-- `flux_schnell_basic.json` — FLUX.1 schnell fp8 기본 텍스트→이미지 (UNETLoader + DualCLIP + KSampler 4 steps). 기본 워크플로이자 `theme=minimal` 및 매칭 없는 모든 요청의 폴백.
+- `flux_schnell_basic.json` — FLUX.1 schnell fp8 기본 텍스트→이미지 (UNETLoader + DualCLIP + KSampler `{steps}`). 기본 워크플로이자 `theme=minimal` 및 매칭 없는 모든 요청의 폴백.
 - `flux_pastel.json` — `theme=pastel`. negative에 `harsh shadow / overexposed / dark mood` 보강(밝고 부드러운 톤 유도).
 - `flux_premium.json` — `theme=premium`. **hires 2-pass**: 1차 KSampler → `LatentUpscaleBy ×1.5` → 2차 KSampler(denoise 0.5)로 디테일/해상감↑. 배율 노드라 종횡비 유지. 추론 시간이 더 길다.
 - `flux_gaming.json` — `theme=gaming`. negative에 `washed out / flat lighting / low contrast` 보강(어둡고 또렷한 무드 유도).
-- `flux_img2img.json` — **선택 도면 강제(img2img) 스파이크**. `EmptyLatentImage` 대신 `LoadImage({reference_image_name})→VAEEncode`로 선택 도면을 latent화해 `KSampler.latent_image`에 연결(denoise `{denoise}`). 출력이 선택 도면 구조를 닮게 한다. **모델 다운로드 불필요**(schnell+VAE만 사용). 레퍼런스(래스터 도면) 자동 업로드가 필요하므로 **명시 선택(`image_workflow="flux_img2img"`) + 래스터 `reference_asset_path`** 로 쓴다. denoise는 `COMFYUI_IMG2IMG_DENOISE`(기본 0.65)로 조절: 낮을수록 도면 원형 유지, 높을수록 자유 재생성.
+- `flux_img2img.json` — **레퍼런스 강제(img2img)**. `EmptyLatentImage` 대신 `LoadImage({reference_image_name})→VAEEncode`로 선택 도면/셋업 구도 맵을 latent화해 `KSampler.latent_image`에 연결(steps `{steps}`, denoise `{denoise}`). 출력이 레퍼런스 구조를 닮게 한다. 셋업 구도 맵은 `COMFYUI_COMPOSITION_STEPS`(기본 8)와 `COMFYUI_COMPOSITION_DENOISE`(기본 0.90)를 사용하고, 선택 도면은 `COMFYUI_STEPS`(기본 4)와 `COMFYUI_IMG2IMG_DENOISE`(기본 0.65)를 사용한다.
 
 > theme별 "분위기"는 이미 `build_image_prompt`가 positive 프롬프트에 반영한다. schnell은 `cfg=1.0`이라
 > negative 차등 효과는 제한적이므로, pastel/gaming은 구조·미세조정용이고 실질 화질차는 premium의 hires가 담당한다.

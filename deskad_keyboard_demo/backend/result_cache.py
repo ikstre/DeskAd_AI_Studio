@@ -243,6 +243,10 @@ def make_image_cache_key(
             os.getenv("COMFYUI_IMG2IMG_DENOISE", ""),
             os.getenv("COMFYUI_COMPOSITION_DENOISE", ""),
         ],
+        "steps": [
+            os.getenv("COMFYUI_STEPS", ""),
+            os.getenv("COMFYUI_COMPOSITION_STEPS", ""),
+        ],
     }
     blob = json.dumps(normalized, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()

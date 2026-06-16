@@ -123,6 +123,43 @@ def test_top_down_mouse_marker_is_rounded_and_detailed():
         assert wheel[0] < body[0] and wheel[1] < body[1]
 
 
+def test_composition_raster_draws_keyboard_key_footprints():
+    keyboard = {
+        "center_x": 0.0,
+        "center_z": 5.0,
+        "board_width_u": 2.0,
+        "board_depth_u": 1.0,
+        "keys": [{"x": 0, "y": 0}, {"x": 1, "y": 0}],
+        "keycap_color": "#f4ead7",
+        "accent_color": "#ff0000",
+        "accent_keys": [1],
+    }
+    for projection in ("top_down", "perspective"):
+        raster = build_setup_composition_raster(
+            boxes=[(-3.5, 3.0, 3.5, 7.0, "keyboard")],
+            desk_width=20.0,
+            desk_depth=16.0,
+            colors={"desk": "#6b4f34", "keyboard": "#2b2f36"},
+            keyboard=keyboard,
+            projection=projection,
+            size=512,
+        )
+        with Image.open(io.BytesIO(raster)).convert("RGB") as img:
+            px = img.load()
+            red_pixels = 0
+            cream_pixels = 0
+            for y in range(img.height):
+                for x in range(img.width):
+                    r, g, b = px[x, y]
+                    if r > 210 and g < 80 and b < 80:
+                        red_pixels += 1
+                    if r > 210 and g > 180 and b > 140:
+                        cream_pixels += 1
+
+        assert red_pixels > 0, projection
+        assert cream_pixels > 0, projection
+
+
 # ── 채널 → 구도(shot_type) 해석 (투영 선택 근거) ──────────────────────────
 def test_resolve_shot_type_by_channel_and_override():
     assert ai._resolve_shot_type({"target_channel": "인스타그램"}) == "top_down"

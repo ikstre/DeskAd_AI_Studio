@@ -178,6 +178,8 @@ def test_compact_layout_forbids_numpad():
 def test_full_size_layout_requires_numpad_and_keeps_it():
     prompt = _prompt(layout="104")
     assert "include the right-side numeric keypad" in prompt
+    assert "Physical block structure" in prompt
+    assert "17-key number pad" in prompt
     assert "no numpad" not in prompt, "풀배열에 넘패드 금지 네거티브가 잘못 적용됨"
 
 

@@ -96,6 +96,7 @@ def test_placeholder_mapping_is_configurable_with_both_brace_styles():
         comfyui_lora_strength=0.7,
         comfyui_controlnet_image="ref.png",
         comfyui_controlnet_strength=0.5,
+        comfyui_steps=12,
     )
     mapping = ai._workflow_placeholder_mapping(settings, "a keyboard", 1024, 768)
 
@@ -106,6 +107,8 @@ def test_placeholder_mapping_is_configurable_with_both_brace_styles():
     assert mapping["{controlnet_image}"] == "ref.png"
     assert mapping["{controlnet_strength}"] == 0.5
     assert mapping["{width}"] == 1024 and mapping["{height}"] == 768
+    assert mapping["{steps}"] == 12
+    assert mapping["{{steps}}"] == 12
     # one seed per call, shared by both brace styles
     assert mapping["{seed}"] == mapping["{{seed}}"]
 
@@ -149,7 +152,10 @@ def _img2img_dir(tmp_path):
         json.dumps(
             {
                 "14": {"class_type": "LoadImage", "inputs": {"image": "{reference_image_name}"}},
-                "9": {"class_type": "KSampler", "inputs": {"latent_image": ["15", 0], "denoise": "{denoise}"}},
+                "9": {
+                    "class_type": "KSampler",
+                    "inputs": {"latent_image": ["15", 0], "denoise": "{denoise}", "steps": "{steps}"},
+                },
             }
         ),
         encoding="utf-8",
@@ -176,8 +182,38 @@ def test_img2img_uploads_reference_and_substitutes_name(tmp_path, monkeypatch):
     workflow = ai._load_comfyui_workflow({"image_workflow": "flux_img2img"}, "studio keyboard")
     assert workflow["14"]["inputs"]["image"] == "deskad_reference.png"
     assert workflow["9"]["inputs"]["denoise"] == 0.6
+    assert workflow["9"]["inputs"]["steps"] == 4
     assert captured["url"].endswith("/upload/image")
     assert captured["files"]["image"][2] == "image/png"
+
+
+def test_composition_reference_uses_composition_steps(tmp_path, monkeypatch):
+    wf_dir = _img2img_dir(tmp_path)
+    monkeypatch.setattr(
+        ai,
+        "get_settings",
+        lambda: _settings(
+            comfyui_workflows_dir=str(wf_dir),
+            comfyui_base_url="http://comfy",
+            comfyui_steps=4,
+            comfyui_composition_steps=12,
+            comfyui_composition_denoise=0.9,
+        ),
+    )
+    monkeypatch.setattr(ai, "_reference_image_b64", lambda payload: "QUJD")
+    monkeypatch.setattr(
+        ai.requests,
+        "post",
+        lambda url, **kw: _UploadResp({"name": "deskad_reference.png", "subfolder": ""}),
+    )
+
+    workflow = ai._load_comfyui_workflow(
+        {"image_workflow": "flux_img2img", "reference_is_composition": True},
+        "studio keyboard",
+    )
+
+    assert workflow["9"]["inputs"]["denoise"] == 0.9
+    assert workflow["9"]["inputs"]["steps"] == 12
 
 
 def test_img2img_subfolder_prefixes_filename(tmp_path, monkeypatch):
@@ -217,5 +253,6 @@ def test_shipped_img2img_workflow_wires_loadimage_vaeencode_to_ksampler():
     assert wf[enc_id]["inputs"]["pixels"][0] == load_id      # VAEEncode ← LoadImage
     assert ks["inputs"]["latent_image"][0] == enc_id          # KSampler ← VAEEncode
     assert ks["inputs"]["denoise"] == "{denoise}"
+    assert ks["inputs"]["steps"] == "{steps}"
     # EmptyLatentImage는 도면 latent로 대체되어 없어야 한다.
     assert not any(n.get("class_type") == "EmptyLatentImage" for n in wf.values())

@@ -114,6 +114,10 @@ class Settings:
     comfyui_lora_strength: float = _float_env("COMFYUI_LORA_STRENGTH", 0.0)
     comfyui_controlnet_image: str = os.getenv("COMFYUI_CONTROLNET_IMAGE", "")
     comfyui_controlnet_strength: float = _float_env("COMFYUI_CONTROLNET_STRENGTH", 0.0)
+    # FLUX schnell 기본은 4스텝으로 빠르지만, 셋업 구도 맵 img2img는 키캡/배열
+    # 디테일이 뭉개지기 쉬워 composition 전용 steps를 따로 높일 수 있게 한다.
+    comfyui_steps: int = _int_env("COMFYUI_STEPS", 4)
+    comfyui_composition_steps: int = _int_env("COMFYUI_COMPOSITION_STEPS", 8)
     # img2img 워크플로(flux_img2img)에서 선택 도면을 latent로 인코딩한 뒤 적용할 denoise.
     # 1.0이면 도면을 무시(text-to-image와 동일), 0에 가까울수록 도면 원형을 강하게 유지.
     # 0.6~0.7이 "도면 구조는 따르되 광고 톤으로 재생성" 균형(schnell cfg=1 기준).
@@ -268,6 +272,10 @@ def redacted_settings() -> dict:
         "comfyui_workflow_path": "set" if settings.comfyui_workflow_path else "missing",
         "comfyui_workflows_dir": "set" if settings.comfyui_workflows_dir else "missing",
         "comfyui_default_workflow": settings.comfyui_default_workflow or "unset",
+        "comfyui_steps": settings.comfyui_steps,
+        "comfyui_composition_steps": settings.comfyui_composition_steps,
+        "comfyui_img2img_denoise": settings.comfyui_img2img_denoise,
+        "comfyui_composition_denoise": settings.comfyui_composition_denoise,
         "flux_model_variant": settings.flux_model_variant or "unset",
         "image_quantization": settings.image_quantization or "unset",
         "enable_vae_tiling": settings.enable_vae_tiling,
