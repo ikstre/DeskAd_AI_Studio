@@ -7,8 +7,8 @@ from pathlib import Path
 
 import streamlit as st
 
-from .api_client import fetch_text_asset, reference_thumbnail_bytes
 from .constants import POSTER_TEMPLATE_LABELS, POSTER_TEMPLATE_THUMBNAILS, STEP_LABELS
+from .formatting import format_price_display
 
 def render_poster_template_thumbnails(current_key: str) -> None:
     cards: list[str] = []
@@ -32,6 +32,8 @@ def render_reference_grid(references: list[dict], columns: int = 4) -> None:
     래스터 이미지는 축소된 `st.image`로 표시하고, 작은 SVG는 직접 삽입한다.
     HTML sanitizer나 data URI 문제를 피하기 위해 `st.columns` 기반으로 배치한다.
     """
+    from .api_client import fetch_text_asset, reference_thumbnail_bytes
+
     cols = st.columns(columns)
     for idx, item in enumerate(references):
         url = item.get("url")
@@ -88,7 +90,7 @@ def render_step_progress() -> None:
 def render_campaign_studio_header() -> None:
     product_name = str(st.session_state.get("product_name") or "").strip() or "상품 정보를 입력해주세요"
     target_customer = str(st.session_state.get("target_customer") or "").strip() or "타깃 고객 미입력"
-    price = str(st.session_state.get("price") or "").strip() or "가격 미입력"
+    price = format_price_display(st.session_state.get("price"))
     target_channel = str(st.session_state.get("target_channel") or "").strip() or "채널 미입력"
     st.markdown(
         f"""

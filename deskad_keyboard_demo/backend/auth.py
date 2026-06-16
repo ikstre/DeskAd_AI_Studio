@@ -25,7 +25,8 @@ LOCKOUT_THRESHOLD = 5
 LOCKOUT_SECONDS = 60.0
 PBKDF2_ITERATIONS = 200_000
 PASSWORD_MIN_LENGTH = 8
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_\-]{3,32}$")
+COOKIE_EXCHANGE_TTL_SECONDS = 60.0
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9]{3,32}$")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_USERS_PATH = BASE_DIR / "data" / "runtime" / "users.json"
@@ -33,6 +34,8 @@ DEFAULT_USERS_PATH = BASE_DIR / "data" / "runtime" / "users.json"
 _LOCK = threading.Lock()
 # token -> {"username": str, "issued_at": float, "expires_at": float}
 _SESSIONS: dict[str, dict] = {}
+# code -> {"token": str, "expires_at": float}
+_COOKIE_EXCHANGE_CODES: dict[str, dict] = {}
 # username -> {"count": int, "locked_until": float}
 _FAIL_STATES: dict[str, dict] = {}
 _USER_STORE: UserStore | None = None
@@ -89,6 +92,9 @@ def _prune_expired(now: float) -> None:
     expired = [token for token, record in _SESSIONS.items() if record["expires_at"] <= now]
     for token in expired:
         _SESSIONS.pop(token, None)
+    expired_codes = [code for code, record in _COOKIE_EXCHANGE_CODES.items() if record["expires_at"] <= now]
+    for code in expired_codes:
+        _COOKIE_EXCHANGE_CODES.pop(code, None)
 
 
 def _issue_session(username: str, now: float) -> dict:
@@ -200,6 +206,63 @@ def logout(token: str) -> bool:
         return _SESSIONS.pop(token, None) is not None
 
 
+def issue_cookie_exchange_code(token: str, *, now: float | None = None) -> dict:
+    """브라우저 HttpOnly cookie 설정에 사용할 짧은 수명의 일회용 코드를 발급한다."""
+    now = time.time() if now is None else now
+    with _LOCK:
+        _prune_expired(now)
+        record = _SESSIONS.get(token)
+        if record is None or record["expires_at"] <= now:
+            return {"ok": False, "error": "invalid_token"}
+        code = secrets.token_urlsafe(24)
+        _COOKIE_EXCHANGE_CODES[code] = {
+            "token": token,
+            "expires_at": min(now + COOKIE_EXCHANGE_TTL_SECONDS, record["expires_at"]),
+        }
+        return {"ok": True, "code": code, "expires_at": _COOKIE_EXCHANGE_CODES[code]["expires_at"]}
+
+
+def consume_cookie_exchange_code(code: str, *, now: float | None = None) -> dict:
+    """일회용 코드를 세션 토큰으로 교환한다. 코드는 성공/실패와 관계없이 재사용하지 않는다."""
+    now = time.time() if now is None else now
+    with _LOCK:
+        _prune_expired(now)
+        record = _COOKIE_EXCHANGE_CODES.pop(code, None)
+        if record is None or record["expires_at"] <= now:
+            return {"ok": False, "error": "invalid_code"}
+        token = record["token"]
+        session = _SESSIONS.get(token)
+        if session is None or session["expires_at"] <= now:
+            _SESSIONS.pop(token, None)
+            return {"ok": False, "error": "invalid_token"}
+        return {
+            "ok": True,
+            "token": token,
+            "display_name": session["username"],
+            "expires_at": session["expires_at"],
+        }
+
+
+def session_info(token: str, *, now: float | None = None) -> dict:
+    """세션 토큰을 검증하고 UI 복원에 필요한 최소 정보를 반환한다."""
+    if not token:
+        return {"ok": False, "error": "invalid_token"}
+    now = time.time() if now is None else now
+    with _LOCK:
+        record = _SESSIONS.get(token)
+        if record is None:
+            return {"ok": False, "error": "invalid_token"}
+        if record["expires_at"] <= now:
+            _SESSIONS.pop(token, None)
+            return {"ok": False, "error": "expired_token"}
+        return {
+            "ok": True,
+            "token": token,
+            "display_name": record["username"],
+            "expires_at": record["expires_at"],
+        }
+
+
 def is_token_valid(token: str, *, now: float | None = None) -> bool:
     """토큰이 발급되어 있고 만료 전인지 확인한다."""
     if not token:
@@ -220,5 +283,6 @@ def reset_state() -> None:
     global _USER_STORE
     with _LOCK:
         _SESSIONS.clear()
+        _COOKIE_EXCHANGE_CODES.clear()
         _FAIL_STATES.clear()
         _USER_STORE = None

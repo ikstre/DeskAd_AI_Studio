@@ -6,7 +6,6 @@ import base64
 import os
 import re
 from pathlib import Path
-
 import requests
 import streamlit as st
 
@@ -59,16 +58,42 @@ FALLBACK_ASSETS = [
 ]
 
 
+def _api_error_message(method: str, path: str, exc: requests.RequestException) -> str:
+    """API 호출 실패 원인을 사용자가 바로 이해할 수 있는 문장으로 바꾼다."""
+    target = f"{API_BASE}{path}"
+    if isinstance(exc, requests.Timeout):
+        return f"{method} {path} 요청 시간이 초과되었습니다. 백엔드 작업이 오래 걸리거나 서버가 응답하지 않습니다."
+    if isinstance(exc, requests.ConnectionError):
+        return f"{method} {path} 요청에 실패했습니다. FastAPI 서버가 실행 중인지 확인해주세요. 대상: {target}"
+    response = getattr(exc, "response", None)
+    if response is not None:
+        detail = ""
+        try:
+            body = response.json()
+            detail = body.get("detail") if isinstance(body, dict) else ""
+        except ValueError:
+            detail = response.text[:240]
+        suffix = f" 상세: {detail}" if detail else ""
+        return f"{method} {path} 요청이 실패했습니다. HTTP {response.status_code}.{suffix}"
+    return f"{method} {path} 요청 중 알 수 없는 오류가 발생했습니다: {exc}"
+
+
 def api_get(path: str, timeout: int = 10) -> dict:
-    response = requests.get(f"{API_BASE}{path}", timeout=timeout)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.get(f"{API_BASE}{path}", timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError(_api_error_message("GET", path, exc)) from exc
 
 
 def api_post(path: str, payload: dict, timeout: int = 30) -> dict:
-    response = requests.post(f"{API_BASE}{path}", json=payload, timeout=timeout)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.post(f"{API_BASE}{path}", json=payload, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError(_api_error_message("POST", path, exc)) from exc
 
 
 def api_login(username: str, password: str) -> dict:
@@ -97,6 +122,14 @@ def api_logout(token: str) -> dict:
         return api_post("/auth/logout", {"token": token}, timeout=10)
     except Exception:
         return {"ok": False}
+
+
+def api_validate_session(token: str) -> dict:
+    """/auth/session 호출 — 새로고침 후 남은 토큰이 아직 유효한지 확인한다."""
+    try:
+        return api_post("/auth/session", {"token": token}, timeout=10)
+    except Exception:
+        return {"ok": False, "error": "request_failed"}
 
 
 def activate_engine_track(track: str) -> dict:

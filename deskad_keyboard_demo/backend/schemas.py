@@ -26,16 +26,32 @@ class LoginResponse(BaseModel):
     retry_after_seconds: int | None = None
 
 
+class SignupResponse(LoginResponse):
+    """회원가입 결과 — 성공 시 자동 로그인 세션 토큰을 함께 응답한다."""
+
+
 class SignupRequest(BaseModel):
     """회원가입 요청을 검증한다 — 가입 코드(.env DESKAD_SIGNUP_CODE) 필수."""
 
-    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_\-]+$")
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9]+$")
     password: str = Field(min_length=8, max_length=128)
     signup_code: str = Field(min_length=1, max_length=64)
 
 
 class LogoutRequest(BaseModel):
     """세션 토큰 무효화 요청을 검증한다."""
+
+    token: str = Field(min_length=1, max_length=128)
+
+
+class SessionRequest(BaseModel):
+    """새로고침 후 세션 복원에 사용할 토큰 검증 요청을 검증한다."""
+
+    token: str = Field(min_length=1, max_length=128)
+
+
+class CookieCodeRequest(BaseModel):
+    """서버 세션 토큰을 브라우저 cookie 설정용 일회용 코드로 교환하는 요청을 검증한다."""
 
     token: str = Field(min_length=1, max_length=128)
 

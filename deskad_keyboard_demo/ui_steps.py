@@ -6,6 +6,7 @@ from typing import Any
 
 import streamlit as st
 
+from ui.constants import IMAGE_JOB_TERMINAL_STATUSES
 from ui.state import PRODUCT_FIELD_ERROR_KEY, missing_product_fields
 
 
@@ -77,6 +78,24 @@ def _option_index(options: list[str], value: str, default: int = 0) -> int:
     return options.index(value) if value in options else default
 
 
+def _bind_product_widget_state() -> None:
+    for key in ("product_type", "product_name", "price", "target_channel", "target_customer", "selling_point"):
+        widget_key = f"_{key}_input"
+        if widget_key not in st.session_state:
+            st.session_state[widget_key] = st.session_state.get(key, "")
+
+
+def _sync_product_field(key: str) -> None:
+    st.session_state[key] = st.session_state.get(f"_{key}_input", "")
+
+
+def _normalize_price_input() -> None:
+    digits = "".join(ch for ch in str(st.session_state.get("_price_input", "")) if ch.isdigit())
+    value = f"{int(digits):,}" if digits else ""
+    st.session_state._price_input = value
+    st.session_state.price = value
+
+
 def _render_button_choice(label: str, options: list[str], state_key: str, columns: int = 3) -> None:
     st.caption(label)
     cols = st.columns(columns)
@@ -112,6 +131,88 @@ def _render_poster_template_cards(ctx: dict[str, Any]) -> None:
         )
 
 
+def _ad_workflow_state() -> dict[str, bool | str]:
+    image_job = st.session_state.image_job_result or {}
+    job = image_job.get("job") or {}
+    image_status = str(job.get("status") or "")
+    copy_ready = bool(st.session_state.copy_result or st.session_state.copy_experiment_result)
+    image_terminal = image_status in IMAGE_JOB_TERMINAL_STATUSES
+    image_completed = image_status == "completed"
+    image_failed = bool(job.get("job_id")) and image_terminal and not image_completed
+    poster_ready = bool(st.session_state.poster_result)
+    return {
+        "copy_ready": copy_ready,
+        "image_requested": bool(job.get("job_id")),
+        "image_completed": image_completed,
+        "image_failed": image_failed,
+        "image_pending": bool(job.get("job_id")) and not image_terminal,
+        "poster_ready": poster_ready,
+        "image_status": image_status or "대기",
+    }
+
+
+def _render_ad_workflow_cards(state: dict[str, bool | str]) -> None:
+    steps = [
+        ("1", "광고 문구", "완료" if state["copy_ready"] else "먼저 생성"),
+        (
+            "2",
+            "이미지 작업",
+            "완료"
+            if state["image_completed"]
+            else ("진행 중" if state["image_pending"] else ("다시 실행 가능" if state["image_failed"] else "문구 생성 후 가능")),
+        ),
+        ("3", "포스터", "완료" if state["poster_ready"] else ("이미지 포함 권장" if state["copy_ready"] else "문구 생성 후 가능")),
+    ]
+    cards = []
+    for number, title, status in steps:
+        ready = status == "완료"
+        active = status in ("먼저 생성", "문구 생성 후 가능", "이미지 포함 권장")
+        cards.append(
+            f'<div class="ad-flow-card {"ready" if ready else ""} {"active" if active else ""}">'
+            f'<span>{number}</span><strong>{title}</strong><small>{status}</small>'
+            f'</div>'
+        )
+    st.markdown('<div class="ad-flow-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+
+def _set_ad_action_notice(level: str, message: str) -> None:
+    st.session_state.ad_action_notice = {"level": level, "message": message}
+
+
+def _render_ad_action_notice() -> None:
+    notice = st.session_state.pop("ad_action_notice", None)
+    if not isinstance(notice, dict):
+        return
+    level = notice.get("level", "info")
+    message = str(notice.get("message") or "").strip()
+    if not message:
+        return
+    if level == "success":
+        st.success(message)
+    elif level == "warning":
+        st.warning(message)
+    elif level == "error":
+        st.error(message)
+    else:
+        st.info(message)
+
+
+def _image_job_feedback(job: dict) -> tuple[str, str]:
+    status = str(job.get("status") or "unknown")
+    message = str(job.get("message") or job.get("error") or "").strip()
+    if status == "completed":
+        return "success", "이미지 작업이 완료되었습니다. 이제 포스터를 생성할 수 있습니다."
+    if status in {"created", "queued", "running", "processing"}:
+        return "info", "이미지 작업이 등록되었습니다. 완료되면 포스터 생성이 활성화됩니다."
+    if status == "not_configured":
+        detail = message or "OpenAI 이미지 모델 또는 ComfyUI 설정이 필요합니다."
+        return "warning", f"이미지 생성 설정이 필요합니다. {detail}"
+    if status == "failed":
+        detail = message or "이미지 생성 요청이 실패했습니다."
+        return "error", f"이미지 작업이 실패했습니다. {detail}"
+    return "warning", f"이미지 작업 상태를 확인해야 합니다. 현재 상태: {status}"
+
+
 def _asset_enabled(asset_id: str) -> bool:
     return asset_id in set(st.session_state.asset_selection)
 
@@ -141,20 +242,51 @@ def _render_product_info_step() -> None:
     st.markdown("#### 상품 정보")
     if st.session_state.get(PRODUCT_FIELD_ERROR_KEY):
         st.error(st.session_state[PRODUCT_FIELD_ERROR_KEY])
-    st.session_state.product_type = st.selectbox(
+    _bind_product_widget_state()
+    st.selectbox(
         "상품 유형",
         PRODUCT_TYPE_OPTIONS,
-        index=_option_index(PRODUCT_TYPE_OPTIONS, st.session_state.product_type),
+        index=_option_index(PRODUCT_TYPE_OPTIONS, st.session_state.get("_product_type_input", st.session_state.product_type)),
+        key="_product_type_input",
+        on_change=_sync_product_field,
+        args=("product_type",),
     )
-    st.session_state.product_name = st.text_input("상품명", st.session_state.product_name, placeholder="예: 커스텀 키보드")
-    st.session_state.price = st.text_input("판매가", st.session_state.price, placeholder="예: 189,000원")
-    st.session_state.target_channel = st.selectbox(
+    st.text_input(
+        "상품명",
+        placeholder="예: 커스텀 키보드",
+        key="_product_name_input",
+        on_change=_sync_product_field,
+        args=("product_name",),
+    )
+    st.text_input(
+        "판매가",
+        placeholder="숫자만 입력해 주세요. 예: 189000",
+        key="_price_input",
+        on_change=_normalize_price_input,
+    )
+    st.selectbox(
         "판매 채널",
         TARGET_CHANNEL_OPTIONS,
-        index=_option_index(TARGET_CHANNEL_OPTIONS, st.session_state.target_channel),
+        index=_option_index(TARGET_CHANNEL_OPTIONS, st.session_state.get("_target_channel_input", st.session_state.target_channel)),
+        key="_target_channel_input",
+        on_change=_sync_product_field,
+        args=("target_channel",),
     )
-    st.session_state.target_customer = st.text_input("타깃 고객", st.session_state.target_customer, placeholder="예: 깔끔한 데스크 셋업을 원하는 직장인")
-    st.session_state.selling_point = st.text_area("핵심 특징", st.session_state.selling_point, height=95, placeholder="예: 조용한 타건감, 크림 톤 키캡, 작은 책상에도 잘 맞는 65% 배열")
+    st.text_input(
+        "타깃 고객",
+        placeholder="예: 깔끔한 데스크 셋업을 원하는 직장인",
+        key="_target_customer_input",
+        on_change=_sync_product_field,
+        args=("target_customer",),
+    )
+    st.text_area(
+        "핵심 특징",
+        height=95,
+        placeholder="예: 조용한 타건감, 크림 톤 키캡, 작은 책상에도 잘 맞는 65% 배열",
+        key="_selling_point_input",
+        on_change=_sync_product_field,
+        args=("selling_point",),
+    )
     st.session_state.product_detail = st.text_area(
         "상세 설명 (선택)",
         st.session_state.get("product_detail", ""),
@@ -596,54 +728,75 @@ def _render_ad_content_step(ctx: dict[str, Any]) -> None:
                     use_container_width=True,
                 )
 
+    workflow_state = _ad_workflow_state()
+    _render_ad_workflow_cards(workflow_state)
+    _render_ad_action_notice()
+
+    image_disabled = not workflow_state["copy_ready"] or bool(workflow_state["image_pending"])
+    poster_disabled = (
+        not workflow_state["copy_ready"]
+        or not workflow_state["image_completed"]
+        or ctx["poster_waiting_for_image"]()
+    )
+    poster_without_image_disabled = not workflow_state["copy_ready"]
+
     # 생성 버튼들은 클릭하면 버튼 자리가 실시간 경과 게이지로 바뀐다(2026-06-12 QA 2).
     col_copy, col_image, col_poster = st.columns(3)
     copy_slot = col_copy.empty()
     if copy_slot.button("광고 문구 생성", type="secondary", use_container_width=True):
         try:
             ctx["generate_copy_variants_live"](copy_slot)
-            st.success("광고 문구 변형 생성 완료 — 마음에 드는 후보를 선택하세요")
+            _set_ad_action_notice("success", "광고 문구 후보 생성이 완료되었습니다. 사용할 문구를 선택한 뒤 이미지 작업이나 포스터 생성을 진행하세요.")
             st.rerun()
         except Exception as exc:
             copy_slot.empty()
             st.error(f"문구 생성 실패: {exc}")
-    if col_image.button("실사 이미지 작업", type="secondary", use_container_width=True):
+
+    if col_image.button("실사 이미지 작업", type="secondary", use_container_width=True, disabled=image_disabled):
         progress = st.progress(0, text="이미지 작업 요청 준비 중")
         try:
-            progress.progress(35, text="이미지 생성 작업 등록 중")
-            ctx["generate_image_job"]()
+            progress.progress(45, text="선택한 문구와 셋업 구도를 이미지 작업에 전달하는 중")
+            image_result = ctx["generate_image_job"]()
+            job = image_result.get("job") if isinstance(image_result, dict) else {}
+            if not isinstance(job, dict):
+                job = {}
             progress.progress(100, text="이미지 작업 등록 완료")
-            st.success("이미지 작업 생성 완료")
+            level, message = _image_job_feedback(job)
+            _set_ad_action_notice(level, message)
             st.rerun()
         except Exception as exc:
             progress.empty()
             st.error(f"이미지 작업 실패: {exc}")
-    poster_disabled = ctx["poster_waiting_for_image"]()
+
     poster_slot = col_poster.empty()
     if poster_slot.button("포스터 생성", type="primary", use_container_width=True, disabled=poster_disabled):
-        if ctx["has_completed_image_job"]():
+        try:
+            ctx["generate_poster_live"](poster_slot)
+            _set_ad_action_notice("success", "실사 이미지가 반영된 포스터 생성이 완료되었습니다.")
+            st.rerun()
+        except Exception as exc:
+            poster_slot.empty()
+            st.error(f"포스터 생성 실패: {exc}")
+
+    if not workflow_state["image_completed"]:
+        if st.button("이미지 없이 포스터 생성", type="secondary", use_container_width=True, disabled=poster_without_image_disabled):
+            poster_without_image_slot = st.empty()
             try:
-                ctx["generate_poster_live"](poster_slot)
-                st.success("포스터 생성 완료")
+                ctx["generate_poster_live"](poster_without_image_slot, include_completed_image=False)
+                _set_ad_action_notice("success", "이미지 없이 포스터 생성이 완료되었습니다. 실사 이미지 작업은 나중에 다시 실행할 수 있습니다.")
                 st.rerun()
             except Exception as exc:
-                poster_slot.empty()
-                st.error(f"포스터 생성 실패: {exc}")
-        else:
-            # 실사 이미지 없이 포스터를 먼저 누른 경우 — 이미지 작업부터 강제하고,
-            # 완료 시 auto_poster_after_image 예약으로 포스터까지 이어 생성한다(2026-06-12 QA).
-            try:
-                if not st.session_state.get("copy_result"):
-                    ctx["generate_copy_variants_live"](poster_slot)
-                ctx["generate_image_job"]()
-                st.session_state.auto_poster_after_image = True
-                st.info("실사 이미지 작업을 먼저 시작했습니다 — 이미지가 완료되면 포스터가 자동 생성됩니다.")
-                st.rerun()
-            except Exception as exc:
-                poster_slot.empty()
-                st.error(f"이미지 작업 시작 실패: {exc}")
-    if poster_disabled:
-        st.caption("이미지 작업이 완료되면 포스터 생성이 활성화됩니다.")
+                poster_without_image_slot.empty()
+                st.error(f"이미지 없이 포스터 생성 실패: {exc}")
+
+    if not workflow_state["copy_ready"]:
+        st.caption("광고 문구를 먼저 생성하면 이미지 작업과 포스터 생성이 순서대로 활성화됩니다.")
+    elif workflow_state["image_pending"]:
+        st.caption("이미지 작업이 진행 중입니다. 완료되면 포스터 생성이 활성화됩니다.")
+    elif workflow_state["image_failed"]:
+        st.caption("이미지 작업이 완료되지 않았습니다. 다시 실행하거나 이미지 없이 포스터를 만들 수 있습니다.")
+    elif not workflow_state["image_completed"]:
+        st.caption("이미지 작업이 완료되면 이미지 포함 포스터 생성이 활성화됩니다. 급하면 이미지 없이 포스터를 먼저 만들 수 있습니다.")
 
     if _operator_mode():
         providers = ctx["fetch_ai_providers"]().get("providers", [])

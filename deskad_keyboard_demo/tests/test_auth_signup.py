@@ -39,6 +39,10 @@ def test_signup_request_rejects_bad_username_and_short_password():
     with pytest.raises(ValidationError):
         SignupRequest(username="한글아이디", password=PASSWORD, signup_code=SIGNUP_CODE)
     with pytest.raises(ValidationError):
+        SignupRequest(username="new_user", password=PASSWORD, signup_code=SIGNUP_CODE)
+    with pytest.raises(ValidationError):
+        SignupRequest(username="new-user", password=PASSWORD, signup_code=SIGNUP_CODE)
+    with pytest.raises(ValidationError):
         SignupRequest(username="newuser", password="short", signup_code=SIGNUP_CODE)
     with pytest.raises(ValidationError):
         SignupRequest(username="newuser", password=PASSWORD, signup_code="")
@@ -111,6 +115,8 @@ def test_signup_wrong_or_missing_code(monkeypatch):
 
 def test_signup_validation_error_codes():
     assert auth.signup("ab", PASSWORD, SIGNUP_CODE)["error"] == "invalid_username"
+    assert auth.signup("new_user", PASSWORD, SIGNUP_CODE)["error"] == "invalid_username"
+    assert auth.signup("new-user", PASSWORD, SIGNUP_CODE)["error"] == "invalid_username"
     assert auth.signup("newuser", "short", SIGNUP_CODE)["error"] == "weak_password"
 
 

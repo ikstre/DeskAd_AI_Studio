@@ -157,31 +157,47 @@ def render_base_layout_styles() -> None:
           }
 
           .ad-preview-card {
-            min-height: 220px;
+            height: 520px;
+            min-height: 420px;
             padding: 28px 30px;
             border: 1px solid rgba(148, 163, 184, 0.28);
             border-radius: 10px;
             background: linear-gradient(135deg, rgba(248, 250, 252, 0.05), rgba(148, 163, 184, 0.08));
+            overflow: hidden;
           }
           .ad-preview-card h3 {
             margin: 0 0 14px 0;
             font-size: 26px;
             line-height: 1.25;
             letter-spacing: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
           }
           .ad-preview-card .subcopy {
             margin: 0 0 18px 0;
             font-size: 17px;
             line-height: 1.65;
             color: rgba(229, 231, 235, 0.86);
+            display: -webkit-box;
+            -webkit-line-clamp: 5;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
           }
           .ad-preview-card ul {
             margin: 0 0 18px 20px;
             padding: 0;
+            max-height: 190px;
+            overflow: hidden;
           }
           .ad-preview-card li {
             margin-bottom: 8px;
             line-height: 1.55;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
           }
           .ad-preview-card .meta {
             color: rgba(156, 163, 175, 0.92);
@@ -363,8 +379,62 @@ def render_base_layout_styles() -> None:
             border-color: rgba(13, 148, 136, 0.36);
             background: #f0fdfa;
           }
+          .ad-flow-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin: 16px 0 12px;
+          }
+          .ad-flow-card {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            grid-template-areas:
+              "num title"
+              "num status";
+            align-items: center;
+            column-gap: 10px;
+            padding: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.34);
+            border-radius: 10px;
+            background: #ffffff;
+          }
+          .ad-flow-card span {
+            grid-area: num;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            color: #334155;
+            font-weight: 800;
+            font-size: 13px;
+          }
+          .ad-flow-card strong {
+            grid-area: title;
+            color: #0f172a;
+            font-size: 14px;
+          }
+          .ad-flow-card small {
+            grid-area: status;
+            color: #64748b;
+            font-size: 12px;
+          }
+          .ad-flow-card.ready {
+            border-color: rgba(13, 148, 136, 0.42);
+            background: #ecfdf5;
+          }
+          .ad-flow-card.ready span {
+            background: #0d9488;
+            color: #ffffff;
+          }
+          .ad-flow-card.active {
+            border-color: rgba(59, 130, 246, 0.38);
+          }
           .ad-preview-card {
-            min-height: 300px;
+            height: 520px;
+            min-height: 420px;
             color: #0f172a;
             border: 0;
             border-radius: 14px;
@@ -372,6 +442,7 @@ def render_base_layout_styles() -> None:
               linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(15, 118, 110, 0.78)),
               linear-gradient(180deg, #ffffff, #e2e8f0);
             box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+            overflow: hidden;
           }
           .ad-preview-card .template-badge {
             display: inline-flex;
@@ -387,6 +458,7 @@ def render_base_layout_styles() -> None:
             display: grid;
             grid-template-columns: minmax(0, 1fr);
             gap: 18px;
+            min-height: 0;
           }
           .ad-preview-grid {
             display: grid;
@@ -394,9 +466,115 @@ def render_base_layout_styles() -> None:
             gap: 8px;
           }
           .ad-preview-grid span {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
             min-height: 58px;
+            padding: 10px 6px;
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.22);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 11px;
+            font-weight: 800;
+          }
+          .ad-preview-grid-panel {
+            display: grid;
+            gap: 10px;
+            min-width: 0;
+          }
+          .ad-preview-grid-hero {
+            min-height: 104px;
+            padding: 14px;
+            border-radius: 14px;
+            background:
+              radial-gradient(circle at 88% 20%, rgba(255, 255, 255, 0.26), transparent 34%),
+              rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+          }
+          .ad-preview-grid-hero span {
+            display: block;
+            margin-bottom: 10px;
+            color: rgba(191, 219, 254, 0.94);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+          }
+          .ad-preview-grid-hero strong {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            color: #ffffff;
+            font-size: 17px;
+            line-height: 1.25;
+          }
+          .ad-preview-grid-note {
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+          }
+          .ad-preview-grid-note b {
+            display: block;
+            margin-bottom: 4px;
+            color: #ffffff;
+            font-size: 13px;
+          }
+          .ad-preview-grid-note small {
+            display: block;
+            color: rgba(226, 232, 240, 0.86);
+            line-height: 1.45;
+          }
+          .ad-preview-grid-shots {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+          }
+          .grid-shot {
+            display: grid;
+            align-content: end;
+            min-height: 118px;
+            padding: 12px 10px;
+            border-radius: 14px;
+            background:
+              linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.12)),
+              rgba(15, 23, 42, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            overflow: hidden;
+          }
+          .grid-shot b {
+            display: inline-flex;
+            width: fit-content;
+            margin-bottom: 8px;
+            padding: 4px 7px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.18);
+            color: rgba(255, 255, 255, 0.92);
+            font-size: 10px;
+            line-height: 1;
+          }
+          .grid-shot span {
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
+          }
+          .grid-shot-product {
+            background:
+              radial-gradient(circle at 76% 22%, rgba(147, 197, 253, 0.34), transparent 34%),
+              rgba(255, 255, 255, 0.14);
+          }
+          .grid-shot-space {
+            background:
+              radial-gradient(circle at 72% 18%, rgba(45, 212, 191, 0.28), transparent 34%),
+              rgba(255, 255, 255, 0.12);
+          }
+          .grid-shot-point {
+            background:
+              radial-gradient(circle at 72% 18%, rgba(251, 191, 36, 0.28), transparent 34%),
+              rgba(255, 255, 255, 0.12);
           }
           .ad-preview-spec {
             padding: 14px;
@@ -456,13 +634,41 @@ def render_base_layout_styles() -> None:
             background: #ef4444;
             box-shadow: 0 12px 24px rgba(239, 68, 68, 0.24);
           }
+          .ad-preview-card h3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+          }
+          .ad-preview-card .subcopy {
+            display: -webkit-box;
+            -webkit-line-clamp: 5;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+          }
+          .ad-preview-card ul {
+            max-height: 190px;
+            overflow: hidden;
+          }
+          .ad-preview-card li {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+          }
           @media (max-width: 1100px) {
             .studio-hero,
             .studio-pipeline,
             .studio-status-grid {
               grid-template-columns: 1fr;
             }
+            .ad-flow-grid {
+              grid-template-columns: 1fr;
+            }
             .creative-strip {
+              grid-template-columns: 1fr;
+            }
+            .ad-preview-grid-shots {
               grid-template-columns: 1fr;
             }
           }
@@ -503,6 +709,11 @@ def render_ui_theme_styles(theme_mode: str | None) -> None:
           [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {{
             background: transparent !important;
             border-color: rgba(248, 251, 255, 0.20) !important;
+            color: {tokens["sidebar_text"]} !important;
+          }}
+          [data-testid="stSidebar"] [data-testid="stExpander"] *,
+          [data-testid="stSidebar"] [data-testid="stExpanderDetails"] *,
+          [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] * {{
             color: {tokens["sidebar_text"]} !important;
           }}
           [data-testid="stSidebar"] [data-testid="stExpander"] summary {{
@@ -569,6 +780,26 @@ def render_ui_theme_styles(theme_mode: str | None) -> None:
             line-height: 1.35 !important;
             text-align: center;
           }}
+          [data-testid="stSidebar"] [data-testid="stButton"] button,
+          [data-testid="stSidebar"] button[data-testid^="stBaseButton"] {{
+            background: rgba(51, 65, 85, 0.92) !important;
+            border-color: rgba(248, 251, 255, 0.20) !important;
+            color: {tokens["sidebar_text"]} !important;
+          }}
+          [data-testid="stSidebar"] [data-testid="stButton"] button p,
+          [data-testid="stSidebar"] [data-testid="stButton"] button span,
+          [data-testid="stSidebar"] button[data-testid^="stBaseButton"] p,
+          [data-testid="stSidebar"] button[data-testid^="stBaseButton"] span {{
+            color: {tokens["sidebar_text"]} !important;
+          }}
+          [data-testid="stSidebar"] [data-testid="stButton"] button:hover,
+          [data-testid="stSidebar"] [data-testid="stButton"] button:focus,
+          [data-testid="stSidebar"] button[data-testid^="stBaseButton"]:hover,
+          [data-testid="stSidebar"] button[data-testid^="stBaseButton"]:focus {{
+            background: rgba(71, 85, 105, 0.98) !important;
+            border-color: rgba(248, 251, 255, 0.34) !important;
+            color: {tokens["sidebar_text"]} !important;
+          }}
           .stButton > button[kind="primary"] {{
             border-color: #ef4444;
             background: #ef4444;
@@ -612,9 +843,20 @@ def render_ui_theme_styles(theme_mode: str | None) -> None:
           .studio-stage,
           .creative-chip,
           .studio-status-card,
-          .poster-thumb {{
+          .poster-thumb,
+          .ad-flow-card {{
             border-color: {tokens["border"]};
             background: {tokens["surface"]};
+          }}
+          .ad-flow-card strong {{
+            color: {tokens["text"]};
+          }}
+          .ad-flow-card small {{
+            color: {tokens["muted"]};
+          }}
+          .ad-flow-card span {{
+            background: {tokens["surface_soft"]};
+            color: {tokens["text"]};
           }}
           .studio-brief-row {{
             border-bottom-color: {tokens["border"]};
@@ -628,6 +870,16 @@ def render_ui_theme_styles(theme_mode: str | None) -> None:
           }}
           .studio-status-card.ready {{
             background: {tokens["ready_bg"]};
+          }}
+          .ad-flow-card.ready {{
+            background: {tokens["ready_bg"]};
+          }}
+          .ad-flow-card.ready span {{
+            background: #0d9488;
+            color: #ffffff;
+          }}
+          .ad-flow-card.active {{
+            border-color: rgba(59, 130, 246, 0.46);
           }}
           .step-progress {{
             background: {tokens["surface_soft"]};

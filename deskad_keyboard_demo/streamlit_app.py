@@ -7,9 +7,8 @@ import streamlit as st
 
 from ui.components import render_campaign_studio_header
 from ui.context import build_step_ui_context
-from ui.login import is_authenticated, render_login_page
+from ui.login import render_login_page, restore_auth_from_cookie
 from ui.result_panel import render_result_panel
-from ui.rendering import render_desk_setup
 from ui.sidebar import render_sidebar
 from ui.state import (
     go_next_step,
@@ -35,12 +34,14 @@ initialize_session_defaults()
 # 주입 위치가 안정되어 첫 상호작용 후 테마가 바뀐 채 유지되던 현상을 막는다(2026-06-13 QA #2).
 render_ui_theme_styles(st.session_state.get("ui_theme_mode"))
 
-if not is_authenticated():
+if not restore_auth_from_cookie():
     render_login_page()
     st.stop()
 
 
 def go_next() -> None:
+    from ui.rendering import render_desk_setup
+
     go_next_step(render_desk_setup)
 
 

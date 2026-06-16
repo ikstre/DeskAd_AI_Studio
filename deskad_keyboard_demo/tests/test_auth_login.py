@@ -134,6 +134,59 @@ def test_logout_invalidates_token(client):
     assert client.post("/auth/logout", json={"token": token}).json()["ok"] is False
 
 
+def test_session_endpoint_restores_valid_token(client):
+    token = client.post("/auth/login", json={"username": "deskad", "password": PASSWORD}).json()["token"]
+
+    response = client.post("/auth/session", json={"token": token})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["token"] == token
+    assert body["display_name"] == "deskad"
+
+
+def test_session_endpoint_rejects_invalid_token(client):
+    response = client.post("/auth/session", json={"token": "invalid-token"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert body["token"] is None
+    assert body["error"] == "invalid_token"
+
+
+def test_cookie_code_sets_httponly_cookie(client):
+    token = client.post("/auth/login", json={"username": "deskad", "password": PASSWORD}).json()["token"]
+    code_response = client.post("/auth/cookie-code", json={"token": token})
+    assert code_response.status_code == 200
+    code = code_response.json()["code"]
+
+    response = client.get(f"/auth/cookie?code={code}&next=http://localhost:8501/", follow_redirects=False)
+    assert response.status_code == 303
+    cookie_header = response.headers["set-cookie"]
+    assert "deskad_auth=" in cookie_header
+    assert "HttpOnly" in cookie_header
+    assert "SameSite=lax" in cookie_header
+    assert response.headers["location"] == "http://localhost:8501/"
+
+
+def test_cookie_code_is_one_time(client):
+    token = client.post("/auth/login", json={"username": "deskad", "password": PASSWORD}).json()["token"]
+    code = client.post("/auth/cookie-code", json={"token": token}).json()["code"]
+
+    assert client.get(f"/auth/cookie?code={code}", follow_redirects=False).status_code == 303
+    second = client.get(f"/auth/cookie?code={code}", follow_redirects=False)
+    assert second.status_code == 303
+    assert "deskad_auth=" not in second.headers.get("set-cookie", "")
+
+
+def test_clear_cookie_redirect_deletes_cookie(client):
+    response = client.get("/auth/clear-cookie?next=http://localhost:8501/", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "http://localhost:8501/"
+    assert "deskad_auth=" in response.headers["set-cookie"]
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
 def test_token_expires_after_ttl():
     issued = auth.login("deskad", PASSWORD, now=1_000.0)
     token = issued["token"]

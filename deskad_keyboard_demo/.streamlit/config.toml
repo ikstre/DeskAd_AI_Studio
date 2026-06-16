@@ -1,3 +1,10 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+fileWatcherType = "none"
+runOnSave = false
+
 [theme]
 # native 기본 테마를 커스텀 기본 테마(ice_navy)에 맞춘다. 이렇게 하면 첫 페인트가
 # 커스텀 CSS(st.markdown 주입)가 적용되기 전에도 비슷하게 보여, 상품명 입력 등
