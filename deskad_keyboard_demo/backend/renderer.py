@@ -1911,6 +1911,17 @@ def build_desk_setup_scene_glb(
             else None
         ),
         deskmat={"center_z": deskmat_z, "width": deskmat_w, "depth": deskmat_d},
+        keyboard={
+            "center_x": 0.0,
+            "center_z": keyboard_center_z,
+            "board_width_u": float(layout_data["width"]),
+            "board_depth_u": float(layout_data["height"]),
+            "keys": layout_data["layouts"]["LAYOUT"]["layout"],
+            "case_color": case_color,
+            "keycap_color": keycap_color,
+            "accent_color": accent_keycap_color,
+            "accent_keys": [0, 13, 14, 42, 56, 65, 66],
+        },
     )
     raster = build_setup_composition_raster(projection="perspective", **_comp_kwargs)
     raster_td = build_setup_composition_raster(projection="top_down", **_comp_kwargs)
@@ -1994,6 +2005,44 @@ def _shade(rgb: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
     return tuple(max(0, min(255, int(c * factor))) for c in rgb)  # type: ignore[return-value]
 
 
+def _composition_keyboard_key_rects(
+    keyboard: dict | None,
+) -> list[tuple[float, float, float, float, tuple[int, int, int]]]:
+    """Return key footprint rectangles in desk cm coordinates for composition rasters."""
+    if not keyboard:
+        return []
+    try:
+        keys = keyboard.get("keys") or []
+        board_w_u = float(keyboard.get("board_width_u") or 0)
+        board_d_u = float(keyboard.get("board_depth_u") or 0)
+        kcx = float(keyboard.get("center_x") or 0)
+        kcz = float(keyboard.get("center_z") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return []
+    if not keys or board_w_u <= 0 or board_d_u <= 0:
+        return []
+    key_rgb = _hex_rgb(str(keyboard.get("keycap_color") or "#f4ead7"))
+    accent_rgb = _hex_rgb(str(keyboard.get("accent_color") or "#6f8faf"))
+    accent_keys = set(keyboard.get("accent_keys") or [])
+    gap = float(keyboard.get("key_gap_cm") or 0.18)
+    rects: list[tuple[float, float, float, float, tuple[int, int, int]]] = []
+    for index, key in enumerate(keys):
+        try:
+            x_u = float(key.get("x") or 0)
+            y_u = float(key.get("y") or 0)
+            w_u = float(key.get("w", 1) or 1)
+            h_u = float(key.get("h", 1) or 1)
+        except (AttributeError, TypeError, ValueError):
+            continue
+        x0 = kcx + (x_u - board_w_u / 2) * U_CM + gap / 2
+        x1 = kcx + (x_u + w_u - board_w_u / 2) * U_CM - gap / 2
+        z0 = kcz + (y_u - board_d_u / 2) * U_CM + gap / 2
+        z1 = kcz + (y_u + h_u - board_d_u / 2) * U_CM - gap / 2
+        fill = accent_rgb if index in accent_keys or w_u >= 2.0 else key_rgb
+        rects.append((x0, z0, x1, z1, fill))
+    return rects
+
+
 def build_setup_composition_raster(
     *,
     boxes: list[tuple[float, float, float, float, str]],
@@ -2003,6 +2052,7 @@ def build_setup_composition_raster(
     theme: str = "minimal",
     monitor: dict | None = None,
     deskmat: dict | None = None,
+    keyboard: dict | None = None,
     size: int = 1024,
     projection: str = "perspective",
 ) -> bytes | None:
@@ -2027,7 +2077,7 @@ def build_setup_composition_raster(
 
         if projection == "top_down":
             return _composition_top_down(
-                Image, ImageDraw, S, dw, dd, boxes, colors, screen_rgb, monitor, deskmat
+                Image, ImageDraw, S, dw, dd, boxes, colors, screen_rgb, monitor, deskmat, keyboard
             )
 
         cx = S / 2.0
@@ -2110,6 +2160,23 @@ def build_setup_composition_raster(
             wr = max(2.0, 4.0 * px)
             dr.ellipse([wheel[0] - wr, wheel[1] - wr, wheel[0] + wr, wheel[1] + wr], fill=_shade(base, 0.25))
 
+        def draw_keyboard_details(
+            x0: float, z0: float, x1: float, z1: float, y0: float, y1: float, base: tuple[int, int, int]
+        ) -> None:
+            draw_box(x0, z0, x1, z1, y0, y1, base)
+            rects = _composition_keyboard_key_rects(keyboard)
+            if not rects:
+                return
+            edge = _shade(base, 0.42)
+            for kx0, kz0, kx1, kz1, fill in sorted(rects, key=lambda item: (item[1] + item[3]) / 2):
+                top = [
+                    project(kx0, kz0, y1 + 0.32),
+                    project(kx1, kz0, y1 + 0.32),
+                    project(kx1, kz1, y1 + 0.32),
+                    project(kx0, kz1, y1 + 0.32),
+                ]
+                quad(top, _shade(fill, 1.05), outline=edge, width=1)
+
         # 객체를 뒤→앞(painter's) 순으로. 모니터(스탠드+키 큰 화면)도 같은 깊이 정렬에
         # 끼워 넣는다 — 모니터를 항상 마지막에 그리면 모니터보다 앞쪽(z 큰) 식물·램프가
         # 모니터 뒤로 가려져 깊이 관계가 반대로 표현된다(QA 2026-06-10 §10).
@@ -2133,6 +2200,9 @@ def build_setup_composition_raster(
             )
         draws.sort(key=lambda item: (item[0], item[1]))
         for _, _, canon, args, kwargs in draws:
+            if canon == "keyboard" and keyboard:
+                draw_keyboard_details(*args)
+                continue
             draw_box(*args, **kwargs)
             if canon == "mouse":
                 x0, z0, x1, z1, _y0, y1, base_rgb = args
@@ -2146,7 +2216,7 @@ def build_setup_composition_raster(
 
 
 def _composition_top_down(
-    Image, ImageDraw, S, dw, dd, boxes, colors, screen_rgb, monitor, deskmat
+    Image, ImageDraw, S, dw, dd, boxes, colors, screen_rgb, monitor, deskmat, keyboard=None
 ) -> bytes:
     """오버헤드 평면도(flat-lay) 구도 맵. 책상 종횡비를 보존해 footprint를 그린다."""
     import io
@@ -2188,6 +2258,14 @@ def _composition_top_down(
         wy = p0[1] + (p1[1] - p0[1]) * 0.23
         dr.ellipse([cx - wr, wy - wr, cx + wr, wy + wr], fill=_shade(fill, 0.25))
 
+    def keyboard_footprint(x0: float, z0: float, x1: float, z1: float, fill, outline=None, width=2) -> None:
+        rect(x0, z0, x1, z1, fill, outline, width)
+        inset = 0.55
+        rect(x0 + inset, z0 + inset, x1 - inset, z1 - inset, _shade(fill, 0.68), outline, 1)
+        edge = _shade(fill, 0.42)
+        for kx0, kz0, kx1, kz1, key_fill in _composition_keyboard_key_rects(keyboard):
+            rect(kx0, kz0, kx1, kz1, _shade(key_fill, 1.04), edge, 1)
+
     desk_rgb = _hex_rgb(colors.get("desk", "#6b4f34"))
     rect(-dw / 2, -dd / 2, dw / 2, dd / 2, _shade(desk_rgb, 0.95), _shade(desk_rgb, 0.68), 3)
     if deskmat:
@@ -2202,6 +2280,9 @@ def _composition_top_down(
         _, base_hex = _COMP_OBJECTS.get(canon, _COMP_DEFAULT)
         override = colors.get(canon)
         rgb = _hex_rgb(override) if override else _hex_rgb(base_hex)
+        if canon == "keyboard" and keyboard:
+            keyboard_footprint(x0, z0, x1, z1, rgb, _shade(rgb, 0.45), 2)
+            continue
         if canon == "mouse":
             mouse_footprint(x0, z0, x1, z1, rgb, _shade(rgb, 0.45), 2)
             continue

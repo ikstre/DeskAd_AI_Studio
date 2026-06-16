@@ -46,7 +46,7 @@
     "class_type": "KSampler",
     "inputs": {
       "seed": "{seed}",
-      "steps": 4,
+      "steps": "{steps}",
       "cfg": 1.0,
       "sampler_name": "euler",
       "scheduler": "simple",
@@ -69,7 +69,7 @@
     "class_type": "KSampler",
     "inputs": {
       "seed": "{seed}",
-      "steps": 4,
+      "steps": "{steps}",
       "cfg": 1.0,
       "sampler_name": "euler",
       "scheduler": "simple",
