@@ -253,6 +253,20 @@ def test_select_best_accent_image_picks_spec_colour():
     assert select_best_accent_image([without, with_blue], "") is None
 
 
+def test_hex_to_rgb_accepts_short_and_alpha_hex():
+    # #rrggbb 외에 단축형(#abc)·알파 포함(#rrggbbaa)도 파싱해야 유효 색에서 best-of-N이
+    # 조용히 꺼지지 않는다. 잘못된 길이/문자는 None(호출부 no-op).
+    from backend.quality_gate import _hex_to_rgb
+
+    assert _hex_to_rgb("#6f8faf") == (111, 143, 175)
+    assert _hex_to_rgb("6f8faf") == (111, 143, 175)
+    assert _hex_to_rgb("#FFF") == (255, 255, 255)        # 단축형 확장
+    assert _hex_to_rgb("#6f8fafcc") == (111, 143, 175)   # 8자리 → 알파 무시
+    assert _hex_to_rgb("#xyz") is None
+    assert _hex_to_rgb("#12345") is None                 # 길이 불일치
+    assert _hex_to_rgb(None) is None
+
+
 def test_apply_accent_best_of_n_promotes_best():
     without = _solid_b64((230, 230, 230))
     with_blue = _solid_b64((230, 230, 230), accent_patch=(111, 143, 175))

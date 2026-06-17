@@ -174,7 +174,7 @@ except Exception:  # pragma: no cover
     _HAS_COMPOSITION_DEPS = False
 
 
-def analyze_composition(data: bytes) -> dict | None:
+def analyze_composition(data: bytes, *, _im=None) -> dict | None:
     """best-of-N용 의존성-가벼운 구도 신호(엣지 맵 기반, GPU/ML 불필요).
 
     Omni의 지배적 실패인 '정면입면/빈공간/줌아웃'(보드가 하단 얇은 밴드 + 상단 텅 빔)을 잡는다.
@@ -187,7 +187,7 @@ def analyze_composition(data: bytes) -> dict | None:
     if not _HAS_COMPOSITION_DEPS or not data:
         return None
     try:
-        im = _PILImage.open(_io.BytesIO(data)).convert("L")
+        im = (_im if _im is not None else _PILImage.open(_io.BytesIO(data))).convert("L")
         height = 200
         width = max(1, round(im.width * height / im.height))
         arr = _np.asarray(im.resize((width, height)), dtype=_np.float32) / 255.0
@@ -333,10 +333,18 @@ def select_best_of_n(jobs: list[dict], *, requested_ratio: str | None = None) ->
 
 
 def _hex_to_rgb(value: object) -> tuple[int, int, int] | None:
-    """'#rrggbb' / 'rrggbb' → (r,g,b). 실패하면 None."""
+    """'#rgb' / '#rrggbb' / '#rrggbbaa'(알파 무시) → (r,g,b). 실패하면 None.
+
+    color picker는 보통 #rrggbb지만, 단축형(#abc)·알파 포함(#rrggbbaa)도 받아 두지 않으면
+    유효한 색인데도 best-of-N이 조용히 꺼진다(None → 호출부 no-op).
+    """
     if not isinstance(value, str):
         return None
     s = value.strip().lstrip("#")
+    if len(s) == 3:            # 단축형 #abc → #aabbcc
+        s = "".join(ch * 2 for ch in s)
+    elif len(s) == 8:          # #rrggbbaa → 알파 채널 무시
+        s = s[:6]
     if len(s) != 6:
         return None
     try:
@@ -351,6 +359,7 @@ def accent_fidelity_score(
     *,
     threshold: float = 64.0,
     region: tuple[float, float, float, float] = (0.34, 0.82, 0.14, 0.86),
+    _im=None,
 ) -> float | None:
     """이미지 중앙(키보드) 밴드에서 스펙 액센트 색에 가까운 픽셀 비중(0~1).
 
@@ -363,7 +372,7 @@ def accent_fidelity_score(
     if not _HAS_COMPOSITION_DEPS or not data:
         return None
     try:
-        im = _PILImage.open(_io.BytesIO(data)).convert("RGB")
+        im = (_im if _im is not None else _PILImage.open(_io.BytesIO(data))).convert("RGB")
         h = 220
         w = max(1, round(im.width * h / im.height))
         arr = _np.asarray(im.resize((w, h)), dtype=_np.float32)
@@ -391,8 +400,16 @@ def select_best_accent_image(image_b64s: list[str], accent_color: object) -> dic
     scores: list[dict] = []
     for idx, b64 in enumerate(image_b64s):
         data = _decode_image_b64_to_bytes(b64)
-        comp = analyze_composition(data) if data else None
-        accent = accent_fidelity_score(data, accent_rgb) if data else None
+        # 후보당 PIL open을 1회로 모아 구도·액센트 두 신호가 공유한다(이중 디코드 제거).
+        # 여기까지 왔으면 _HAS_COMPOSITION_DEPS는 보장된다(함수 진입 가드).
+        im = None
+        if data:
+            try:
+                im = _PILImage.open(_io.BytesIO(data))
+            except Exception:
+                im = None
+        comp = analyze_composition(data, _im=im) if im is not None else None
+        accent = accent_fidelity_score(data, accent_rgb, _im=im) if im is not None else None
         scores.append(
             {
                 "index": idx,
