@@ -3173,8 +3173,9 @@ def _workflow_placeholder_mapping(
         "controlnet_strength": settings.comfyui_controlnet_strength,
         "controlnet_model": settings.comfyui_controlnet_model,
         "controlnet_end_percent": settings.comfyui_controlnet_end_percent,
-        # best-of-N: ControlNet 워크플로의 EmptyLatentImage batch_size. 1~8 클램프.
-        "batch_size": max(1, min(int(settings.comfyui_best_of_n or 1), 8)),
+        # best-of-N: ControlNet 워크플로의 EmptyLatentImage batch_size. 1~8 클램프
+        # (max/min이 0·음수도 1로 보정하므로 별도 `or 1`은 불필요).
+        "batch_size": max(1, min(int(settings.comfyui_best_of_n), 8)),
         "denoise": settings.comfyui_img2img_denoise if denoise is None else denoise,
     }
     mapping: dict = {}
@@ -3639,7 +3640,10 @@ def poll_image_job(job_id: str) -> dict | None:
                 reference = _download_comfyui_images_reference(
                     job_id, image_urls, limit=min(len(image_urls), 8)
                 )
-                _apply_accent_best_of_n(job, reference)
+                # 액센트 재선택은 best-of-N이 켜졌을 때(N>1)만 한다 — batch_size>1인 다른/커스텀
+                # 워크플로가 만든 여러 컷의 대표 이미지를 의도치 않게 재정렬하지 않도록 게이팅.
+                if settings.comfyui_best_of_n > 1:
+                    _apply_accent_best_of_n(job, reference)
                 job["local_image_reference"] = reference
         else:
             job["status"] = "running"
