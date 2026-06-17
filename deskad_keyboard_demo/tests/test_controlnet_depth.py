@@ -30,6 +30,7 @@ def _payload_with_glb(tmp_path, monkeypatch) -> dict:
         "reference_is_composition": True,
         "reference_image_b64": "QUJD",
         "model_url": "http://h/static/models/desk.glb",
+        "shot_type": "hero",  # desk 씬 → ControlNet 적합(flat-lay/macro는 별도 테스트)
     }
 
 
@@ -86,6 +87,23 @@ def test_candidate_falls_back_to_img2img_when_disabled(tmp_path, monkeypatch):
     assert names[0] == "flux_img2img"
 
 
+def test_controlnet_only_for_perspective_desk_shots(tmp_path, monkeypatch):
+    """depth는 3D 데스크(세워진 모니터)를 3/4-위에서 렌더 → hero/eye_level/wide_scene(desk·room)엔
+    적합, top_down(flat-lay)·detail_macro엔 부적합 → 그 컷은 img2img 폴백."""
+    base = _payload_with_glb(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        ai, "get_settings",
+        lambda: _settings(comfyui_controlnet_model="m.safetensors", comfyui_controlnet_strength=0.7),
+    )
+    for shot in ("hero", "eye_level", "wide_scene"):
+        names = ai._candidate_workflow_names({**base, "shot_type": shot})
+        assert "flux_controlnet_depth" in names, shot
+    for shot in ("top_down", "detail_macro"):
+        names = ai._candidate_workflow_names({**base, "shot_type": shot})
+        assert "flux_controlnet_depth" not in names, shot
+        assert names[0] == "flux_img2img", shot  # 폴백
+
+
 def test_candidate_no_controlnet_without_resolvable_glb(monkeypatch):
     # 모델/강도는 켜졌지만 model_url(GLB) 없음 → ControlNet 미선택(img2img 폴백)
     monkeypatch.setattr(
@@ -93,7 +111,7 @@ def test_candidate_no_controlnet_without_resolvable_glb(monkeypatch):
         lambda: _settings(comfyui_controlnet_model="m.safetensors", comfyui_controlnet_strength=0.7),
     )
     names = ai._candidate_workflow_names(
-        {"reference_is_composition": True, "reference_image_b64": "QUJD"}
+        {"reference_is_composition": True, "reference_image_b64": "QUJD", "shot_type": "hero"}
     )
     assert "flux_controlnet_depth" not in names
 
@@ -184,7 +202,198 @@ def test_shipped_controlnet_workflow_wires_depth_to_conditioning():
     assert "{reference_image_name}" not in json.dumps(wf)   # img2img 아님
 
 
+# ── best-of-N 액센트 색 선택 ──────────────────────────────────────────────────
+def _solid_b64(rgb, *, accent_patch=None):
+    """단색 PNG b64. accent_patch=(rgb)면 중앙 키보드 밴드에 액센트 패치를 넣는다."""
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    import base64
+    import io
+
+    from PIL import Image
+
+    arr = np.full((512, 512, 3), rgb, np.uint8)
+    if accent_patch is not None:
+        arr[230:300, 200:330] = accent_patch  # (0.34~0.82, 0.14~0.86) 중앙 밴드 안
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def test_best_of_n_batch_size_in_controlnet_workflow(tmp_path, monkeypatch):
+    payload = _payload_with_glb(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        ai, "get_settings",
+        lambda: _settings(
+            comfyui_workflows_dir=str(WF_DIR), comfyui_base_url="http://comfy",
+            comfyui_controlnet_model="m.safetensors", comfyui_controlnet_strength=0.7,
+            comfyui_best_of_n=4,
+        ),
+    )
+    monkeypatch.setattr(ai, "_upload_controlnet_depth_to_comfyui", lambda p, s: "d.png")
+    wf = ai._load_comfyui_workflow(payload, "kbd")
+    assert wf["16"]["inputs"]["batch_size"] == 4  # EmptyLatentImage batch = best_of_n
+
+
+def test_best_of_n_clamped_in_mapping():
+    # 1~8 클램프(0/음수→1, 과대→8)
+    assert ai._workflow_placeholder_mapping(_settings(comfyui_best_of_n=0), "p", 8, 8)["{batch_size}"] == 1
+    assert ai._workflow_placeholder_mapping(_settings(comfyui_best_of_n=99), "p", 8, 8)["{batch_size}"] == 8
+
+
+def test_select_best_accent_image_picks_spec_colour():
+    from backend.quality_gate import select_best_accent_image
+
+    without = _solid_b64((230, 230, 230))
+    with_blue = _solid_b64((230, 230, 230), accent_patch=(111, 143, 175))
+    res = select_best_accent_image([without, with_blue], "#6f8faf")
+    assert res is not None and res["best_index"] == 1
+    # 액센트 색 미설정이면 None(호출부가 첫 컷 유지)
+    assert select_best_accent_image([without, with_blue], None) is None
+    assert select_best_accent_image([without, with_blue], "") is None
+
+
+def test_apply_accent_best_of_n_promotes_best():
+    without = _solid_b64((230, 230, 230))
+    with_blue = _solid_b64((230, 230, 230), accent_patch=(111, 143, 175))
+    reference = {
+        "image_b64": without, "image_b64s": [without, with_blue],
+        "source_url": "u0", "source_urls": ["u0", "u1"],
+    }
+    ai._apply_accent_best_of_n({"accent_keycap_color": "#6f8faf"}, reference)
+    assert reference["image_b64"] == with_blue       # 액센트 충실한 컷으로 승격
+    assert reference["source_url"] == "u1"
+    assert reference["best_of_n"]["best_index"] == 1 and reference["best_of_n"]["count"] == 2
+
+
+def test_apply_accent_best_of_n_noop_single_image():
+    only = _solid_b64((230, 230, 230))
+    reference = {"image_b64": only, "source_url": "u0"}  # image_b64s 없음(batch 1)
+    ai._apply_accent_best_of_n({"accent_keycap_color": "#6f8faf"}, reference)
+    assert "best_of_n" not in reference and reference["image_b64"] == only
+
+
+def test_best_of_n_in_cache_key(monkeypatch):
+    monkeypatch.setenv("COMFYUI_BEST_OF_N", "1")
+    k1 = result_cache.make_image_cache_key("p", {}, 1024, 1024)
+    monkeypatch.setenv("COMFYUI_BEST_OF_N", "4")
+    k2 = result_cache.make_image_cache_key("p", {}, 1024, 1024)
+    assert k1 != k2
+
+
+# ── end_percent 노브(ControlNet 적용 구간) ───────────────────────────────────
+def test_controlnet_end_percent_in_mapping_and_workflow(tmp_path, monkeypatch):
+    mapping = ai._workflow_placeholder_mapping(
+        _settings(comfyui_controlnet_end_percent=0.6), "kbd", 1024, 1024
+    )
+    assert mapping["{controlnet_end_percent}"] == 0.6
+
+    payload = _payload_with_glb(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        ai, "get_settings",
+        lambda: _settings(
+            comfyui_workflows_dir=str(WF_DIR), comfyui_base_url="http://comfy",
+            comfyui_controlnet_model="m.safetensors", comfyui_controlnet_strength=0.8,
+            comfyui_controlnet_end_percent=0.6,
+        ),
+    )
+    monkeypatch.setattr(ai, "_upload_controlnet_depth_to_comfyui", lambda p, s: "d.png")
+    wf = ai._load_comfyui_workflow(payload, "kbd")
+    assert wf["23"]["inputs"]["end_percent"] == 0.6   # <1.0 → 초기 스텝만
+    assert wf["23"]["inputs"]["start_percent"] == 0.0
+
+
+def test_end_percent_in_cache_key(monkeypatch):
+    monkeypatch.setenv("COMFYUI_CONTROLNET_END_PERCENT", "1.0")
+    k1 = result_cache.make_image_cache_key("p", {}, 1024, 1024)
+    monkeypatch.setenv("COMFYUI_CONTROLNET_END_PERCENT", "0.6")
+    k2 = result_cache.make_image_cache_key("p", {}, 1024, 1024)
+    assert k1 != k2
+
+
+# ── batch OOM 시 N 자동 하향 재시도 ───────────────────────────────────────────
+def _err_status(msg):
+    return {"status_str": "error", "messages": [["execution_error", {"exception_message": msg}]]}
+
+
+def _record_with_batch(batch):
+    wf = {"16": {"class_type": "EmptyLatentImage", "inputs": {"batch_size": batch, "width": 1024, "height": 1024}}}
+    return {"prompt": [0, "pid", wf, {}, []]}
+
+
+class _PromptResp:
+    def __init__(self, captured):
+        self._captured = captured
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"prompt_id": "newpid"}
+
+
+def test_is_oom_error_detects_cuda_oom():
+    assert ai._is_oom_error(_err_status("CUDA out of memory. Tried to allocate 2.00 GiB")) is True
+    assert ai._is_oom_error(_err_status("torch.cuda.OutOfMemoryError")) is True
+    assert ai._is_oom_error(_err_status("some unrelated KeyError")) is False
+
+
+def test_oom_retry_halves_batch_and_resubmits(monkeypatch):
+    captured = {}
+
+    def _fake_post(url, **kwargs):
+        captured["batch"] = kwargs["json"]["prompt"]["16"]["inputs"]["batch_size"]
+        captured["url"] = url
+        return _PromptResp(captured)
+
+    monkeypatch.setattr(ai.requests, "post", _fake_post)
+    job = {"job_id": "j1"}
+    ok = ai._maybe_retry_oom_lower_batch(
+        job, _record_with_batch(4), _err_status("CUDA out of memory"),
+        _settings(comfyui_base_url="http://comfy"),
+    )
+    assert ok is True
+    assert captured["batch"] == 2                  # 4 → 2 (반감)
+    assert job["status"] == "queued" and job["comfyui_prompt_id"] == "newpid"
+    assert job["oom_retries"][-1] == {"from_batch": 4, "to_batch": 2, "at": job["oom_retries"][-1]["at"]}
+
+
+def test_oom_retry_stops_at_batch_1(monkeypatch):
+    monkeypatch.setattr(ai.requests, "post", lambda *a, **k: pytest.fail("should not resubmit at batch 1"))
+    job = {"job_id": "j1"}
+    ok = ai._maybe_retry_oom_lower_batch(
+        job, _record_with_batch(1), _err_status("CUDA out of memory"),
+        _settings(comfyui_base_url="http://comfy"),
+    )
+    assert ok is False  # batch 1 → 더 줄일 수 없음, 진짜 실패
+
+
+def test_oom_retry_ignores_non_oom_error(monkeypatch):
+    monkeypatch.setattr(ai.requests, "post", lambda *a, **k: pytest.fail("non-OOM must not resubmit"))
+    job = {"job_id": "j1"}
+    assert ai._maybe_retry_oom_lower_batch(
+        job, _record_with_batch(4), _err_status("ValueError: bad node"),
+        _settings(comfyui_base_url="http://comfy"),
+    ) is False
+
+
 # ── depth 생성기(헤드리스 렌더; OSMesa 없으면 skip) ───────────────────────────
+# ── 색/액센트 그라운딩(depth가 grayscale라 색은 프롬프트가 책임) ─────────────
+def test_image_prompt_grounds_exact_colours_early():
+    payload = {
+        "product_name": "Neo65", "layout": "65", "shot_type": "hero",
+        "case_color": "#c8c1b2", "keycap_color": "#f4ead7", "accent_keycap_color": "#6f8faf",
+    }
+    prompt = ai.build_image_prompt(payload, {})
+    assert "[exact colours]" in prompt
+    # 말미 [color palette]보다 앞(고가중치)에서 정확 색을 단언해야 한다
+    assert prompt.index("[exact colours]") < prompt.index("[color palette]")
+    assert "accent keycaps" in prompt
+    # 색 입력이 없으면 빈 절을 만들지 않는다(color_clause 가드)
+    no_color = ai.build_image_prompt({"product_name": "Neo65", "layout": "65", "shot_type": "hero"}, {})
+    assert "[exact colours]" not in no_color
+
+
 def test_depth_png_none_for_missing_path():
     # 미존재 경로는 pyrender import 전에 None(빠름)
     assert build_desk_setup_depth_png("/no/such/file.glb") is None
