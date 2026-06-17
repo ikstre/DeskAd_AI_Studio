@@ -120,6 +120,11 @@ class Settings:
     # 활성. 평면 색블록 img2img로는 "사진+정확 배열"을 동시에 못 얻어(2026-06-16 A/B),
     # GLB depth로 배열을 denoise와 독립적으로 고정하기 위한 노브.
     comfyui_controlnet_model: str = os.getenv("COMFYUI_CONTROLNET_MODEL", "")
+    # best-of-N: depth-ControlNet은 grayscale라 색을 못 잠근다 → N장(batch)을 뽑아 스펙
+    # 액센트 색이 가장 충실한 컷을 quality_gate가 고른다. 1=비활성(1장). 클수록 액센트
+    # 충실도↑·생성시간/ VRAM↑(단일 L4 권장 2~4). flux_controlnet_depth의 batch_size에 적용
+    # (사용 시 1~8로 클램프). _int_env는 범위 인자가 없어 값 검증은 사용처에서 한다.
+    comfyui_best_of_n: int = _int_env("COMFYUI_BEST_OF_N", 1)
     # FLUX schnell 기본은 4스텝으로 빠르지만, 셋업 구도 맵 img2img는 키캡/배열
     # 디테일이 뭉개지기 쉬워 composition 전용 steps를 따로 높일 수 있게 한다.
     comfyui_steps: int = _int_env("COMFYUI_STEPS", 4)
@@ -284,6 +289,7 @@ def redacted_settings() -> dict:
         "comfyui_composition_denoise": settings.comfyui_composition_denoise,
         "comfyui_controlnet_model": settings.comfyui_controlnet_model or "unset",
         "comfyui_controlnet_strength": settings.comfyui_controlnet_strength,
+        "comfyui_best_of_n": settings.comfyui_best_of_n,
         "flux_model_variant": settings.flux_model_variant or "unset",
         "image_quantization": settings.image_quantization or "unset",
         "enable_vae_tiling": settings.enable_vae_tiling,
