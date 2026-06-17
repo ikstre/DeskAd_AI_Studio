@@ -3172,6 +3172,8 @@ def _workflow_placeholder_mapping(
         "controlnet_image": settings.comfyui_controlnet_image,
         "controlnet_strength": settings.comfyui_controlnet_strength,
         "controlnet_model": settings.comfyui_controlnet_model,
+        # best-of-N: ControlNet 워크플로의 EmptyLatentImage batch_size. 1~8 클램프.
+        "batch_size": max(1, min(int(settings.comfyui_best_of_n or 1), 8)),
         "denoise": settings.comfyui_img2img_denoise if denoise is None else denoise,
     }
     mapping: dict = {}
@@ -3356,6 +3358,40 @@ def _download_comfyui_images_reference(job_id: str, image_urls: list[str], *, li
     return reference
 
 
+def _apply_accent_best_of_n(job: dict, reference: dict) -> None:
+    """best-of-N: image_b64s 중 스펙 액센트 색이 가장 충실한 컷을 image_b64로 승격한다.
+
+    depth-ControlNet은 grayscale라 색을 못 잠그므로(배열만 고정), N장(batch) 중 스펙
+    액센트 색에 가장 가까운 컷을 quality_gate가 고른다. 후보가 2장 미만이거나 액센트 색
+    미설정/의존성 없음이면 no-op(첫 컷 유지). 선택 근거는 reference["best_of_n"]에 남긴다.
+    """
+    b64s = reference.get("image_b64s")
+    if not isinstance(b64s, list) or len(b64s) < 2:
+        return
+    try:
+        from .quality_gate import select_best_accent_image
+
+        result = select_best_accent_image(b64s, job.get("accent_keycap_color"))
+    except Exception:
+        result = None
+    if not result:
+        return
+    idx = result.get("best_index")
+    if not isinstance(idx, int) or not (0 <= idx < len(b64s)):
+        return
+    reference["image_b64"] = b64s[idx]
+    source_urls = reference.get("source_urls")
+    if isinstance(source_urls, list) and idx < len(source_urls):
+        reference["source_url"] = source_urls[idx]
+    reference["best_of_n"] = {
+        "count": len(b64s),
+        "best_index": idx,
+        "best_accent": result.get("best_accent"),
+        "scores": result.get("scores"),
+        "note": result.get("note"),
+    }
+
+
 # 중단·유실되어 queued/running 으로 굳은 좀비 job이 VRAM 해제를 영구 차단하지
 # 않도록, 생성 후 이 시간이 지난 non-terminal job은 더 이상 active로 치지 않는다.
 _COMFYUI_JOB_STALE_SECONDS = 600
@@ -3523,7 +3559,12 @@ def poll_image_job(job_id: str) -> dict | None:
             job.update({"status": "completed", "images": images, "completed_at": int(time.time())})
             image_urls = [image.get("url") for image in images if image.get("url")]
             if image_urls:
-                job["local_image_reference"] = _download_comfyui_images_reference(job_id, image_urls)
+                # best-of-N(batch)이면 모든 후보를 받아 액센트 색이 가장 충실한 컷을 고른다.
+                reference = _download_comfyui_images_reference(
+                    job_id, image_urls, limit=min(len(image_urls), 8)
+                )
+                _apply_accent_best_of_n(job, reference)
+                job["local_image_reference"] = reference
         else:
             job["status"] = "running"
     except Exception as exc:
@@ -3633,6 +3674,9 @@ def create_image_job(payload: dict, image_prompt: str, *, force_regen: bool = Fa
         "height": height,
         "prompt_preview": image_prompt[:700],
         "backend_config": {**_image_backend_config(), "aspect_ratio": requested_ratio},
+        # best-of-N 액센트 선택용: 폴링(완료) 시점엔 payload가 없으므로 스펙 액센트 색을
+        # job에 실어 둔다(depth는 grayscale라 색은 후보 선별로 잡는다).
+        "accent_keycap_color": sanitize_user_text(payload.get("accent_keycap_color", ""), limit=20),
     }
     # 선택 엔진이 이미지 backend를 강제한다. 엔진을 명시적으로 고르면(openai/comfyui)
     # 그 backend만 사용하고 다른 backend로 조용히 폴백하지 않는다(평가 트랙 무결성).

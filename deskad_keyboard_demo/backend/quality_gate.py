@@ -332,6 +332,93 @@ def select_best_of_n(jobs: list[dict], *, requested_ratio: str | None = None) ->
     }
 
 
+def _hex_to_rgb(value: object) -> tuple[int, int, int] | None:
+    """'#rrggbb' / 'rrggbb' → (r,g,b). 실패하면 None."""
+    if not isinstance(value, str):
+        return None
+    s = value.strip().lstrip("#")
+    if len(s) != 6:
+        return None
+    try:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+    except ValueError:
+        return None
+
+
+def accent_fidelity_score(
+    data: bytes,
+    accent_rgb: tuple[int, int, int],
+    *,
+    threshold: float = 64.0,
+    region: tuple[float, float, float, float] = (0.34, 0.82, 0.14, 0.86),
+) -> float | None:
+    """이미지 중앙(키보드) 밴드에서 스펙 액센트 색에 가까운 픽셀 비중(0~1).
+
+    depth-ControlNet은 grayscale라 색을 못 잠근다 → best-of-N으로 액센트 색이 가장 충실한
+    컷을 고를 때 쓰는 의존-가벼운 색 신호(PIL+numpy, GPU/ML 불필요). ``region``은
+    (top,bottom,left,right) 비율로 키보드가 놓이는 중앙 밴드만 본다(데스크/배경 간섭 축소).
+    액센트 키는 소수라 값 자체는 작지만 후보 간 *상대* 비교로 충실한 컷을 가린다.
+    의존성/디코드 실패면 None.
+    """
+    if not _HAS_COMPOSITION_DEPS or not data:
+        return None
+    try:
+        im = _PILImage.open(_io.BytesIO(data)).convert("RGB")
+        h = 220
+        w = max(1, round(im.width * h / im.height))
+        arr = _np.asarray(im.resize((w, h)), dtype=_np.float32)
+        t, b, l, r = region
+        sub = arr[int(t * h) : int(b * h), int(l * w) : int(r * w)]
+        if sub.size == 0:
+            return None
+        target = _np.array(accent_rgb, dtype=_np.float32)
+        dist = _np.sqrt(((sub - target) ** 2).sum(axis=2))
+        return float((dist < threshold).mean())
+    except Exception:
+        return None
+
+
+def select_best_accent_image(image_b64s: list[str], accent_color: object) -> dict | None:
+    """N개 후보 b64 중 액센트 색이 가장 충실한 1장을 고른다(빈 프레임은 강등).
+
+    accent_color는 '#rrggbb' 스펙 색. 반환:
+    {"best_index", "best_accent", "scores":[{index,accent,composition,sparse}], "note"}.
+    accent 미설정/의존성 없음/유효 후보 없음이면 None(호출부가 기존 첫 컷 유지).
+    """
+    accent_rgb = _hex_to_rgb(accent_color)
+    if accent_rgb is None or not _HAS_COMPOSITION_DEPS or not image_b64s:
+        return None
+    scores: list[dict] = []
+    for idx, b64 in enumerate(image_b64s):
+        data = _decode_image_b64_to_bytes(b64)
+        comp = analyze_composition(data) if data else None
+        accent = accent_fidelity_score(data, accent_rgb) if data else None
+        scores.append(
+            {
+                "index": idx,
+                "accent": round(accent, 5) if accent is not None else None,
+                "composition": comp["composition_score"] if comp else None,
+                "sparse": bool(comp and comp.get("sparse")),
+            }
+        )
+    valid = [s for s in scores if s["accent"] is not None]
+    if not valid:
+        return None
+    # sparse(빈/희박 프레임)는 뒤로 → 액센트 충실도 높은 순 → 동점이면 구도 점수.
+    ranking = sorted(
+        valid,
+        key=lambda s: (not s["sparse"], s["accent"], s["composition"] or 0.0),
+        reverse=True,
+    )
+    best = ranking[0]
+    return {
+        "best_index": best["index"],
+        "best_accent": best["accent"],
+        "scores": scores,
+        "note": "accent-colour fidelity in central keyboard band; sparse demoted, ties by composition",
+    }
+
+
 def evaluate_and_store(job: dict, *, requested_ratio: str | None = None) -> dict:
     report = evaluate_image_job(job, requested_ratio=requested_ratio)
     return IMAGE_QUALITY_STORE.save(report)
