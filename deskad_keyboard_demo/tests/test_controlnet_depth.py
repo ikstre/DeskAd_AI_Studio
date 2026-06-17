@@ -30,6 +30,7 @@ def _payload_with_glb(tmp_path, monkeypatch) -> dict:
         "reference_is_composition": True,
         "reference_image_b64": "QUJD",
         "model_url": "http://h/static/models/desk.glb",
+        "shot_type": "hero",  # desk 씬 → ControlNet 적합(flat-lay/macro는 별도 테스트)
     }
 
 
@@ -86,6 +87,23 @@ def test_candidate_falls_back_to_img2img_when_disabled(tmp_path, monkeypatch):
     assert names[0] == "flux_img2img"
 
 
+def test_controlnet_only_for_perspective_desk_shots(tmp_path, monkeypatch):
+    """depth는 3D 데스크(세워진 모니터)를 3/4-위에서 렌더 → hero/eye_level/wide_scene(desk·room)엔
+    적합, top_down(flat-lay)·detail_macro엔 부적합 → 그 컷은 img2img 폴백."""
+    base = _payload_with_glb(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        ai, "get_settings",
+        lambda: _settings(comfyui_controlnet_model="m.safetensors", comfyui_controlnet_strength=0.7),
+    )
+    for shot in ("hero", "eye_level", "wide_scene"):
+        names = ai._candidate_workflow_names({**base, "shot_type": shot})
+        assert "flux_controlnet_depth" in names, shot
+    for shot in ("top_down", "detail_macro"):
+        names = ai._candidate_workflow_names({**base, "shot_type": shot})
+        assert "flux_controlnet_depth" not in names, shot
+        assert names[0] == "flux_img2img", shot  # 폴백
+
+
 def test_candidate_no_controlnet_without_resolvable_glb(monkeypatch):
     # 모델/강도는 켜졌지만 model_url(GLB) 없음 → ControlNet 미선택(img2img 폴백)
     monkeypatch.setattr(
@@ -93,7 +111,7 @@ def test_candidate_no_controlnet_without_resolvable_glb(monkeypatch):
         lambda: _settings(comfyui_controlnet_model="m.safetensors", comfyui_controlnet_strength=0.7),
     )
     names = ai._candidate_workflow_names(
-        {"reference_is_composition": True, "reference_image_b64": "QUJD"}
+        {"reference_is_composition": True, "reference_image_b64": "QUJD", "shot_type": "hero"}
     )
     assert "flux_controlnet_depth" not in names
 
@@ -185,6 +203,22 @@ def test_shipped_controlnet_workflow_wires_depth_to_conditioning():
 
 
 # ── depth 생성기(헤드리스 렌더; OSMesa 없으면 skip) ───────────────────────────
+# ── 색/액센트 그라운딩(depth가 grayscale라 색은 프롬프트가 책임) ─────────────
+def test_image_prompt_grounds_exact_colours_early():
+    payload = {
+        "product_name": "Neo65", "layout": "65", "shot_type": "hero",
+        "case_color": "#c8c1b2", "keycap_color": "#f4ead7", "accent_keycap_color": "#6f8faf",
+    }
+    prompt = ai.build_image_prompt(payload, {})
+    assert "[exact colours]" in prompt
+    # 말미 [color palette]보다 앞(고가중치)에서 정확 색을 단언해야 한다
+    assert prompt.index("[exact colours]") < prompt.index("[color palette]")
+    assert "accent keycaps" in prompt
+    # 색 입력이 없으면 빈 절을 만들지 않는다(color_clause 가드)
+    no_color = ai.build_image_prompt({"product_name": "Neo65", "layout": "65", "shot_type": "hero"}, {})
+    assert "[exact colours]" not in no_color
+
+
 def test_depth_png_none_for_missing_path():
     # 미존재 경로는 pyrender import 전에 None(빠름)
     assert build_desk_setup_depth_png("/no/such/file.glb") is None

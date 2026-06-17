@@ -1601,6 +1601,14 @@ def build_image_prompt(payload: dict, copy_result: dict) -> str:
         "evenly aligned keycaps in straight rows, crisp readable keycap legends, accurate proportions. ",
         # 배열별 넘패드 제약(컴팩트=금지/풀=필수) → 65% 입력에 풀사이즈가 나오는 오프-브리프 방지
         f"[layout fidelity] {layout_constraint} Physical block structure: {layout_geometry}. ",
+        # 색은 depth ControlNet 입력(grayscale)엔 없고 말미 [color palette]만으론 약하게
+        # 반영됐다(2026-06-16 A/B 색 드리프트) → 피사체 직후 고가중치 위치에서 정확 색을
+        # 한 번 더 단언한다(ControlNet/img2img/text2img 전 경로 공통 충실도 강화).
+        (
+            f"[exact colours] render the keyboard in these exact colours — {color_clause}; "
+            "keep the accent keycaps clearly distinct from the primary keycaps. "
+            if color_clause else ""
+        ),
         inventory,
         # 구도(angle)는 오프닝 문장에 이미 명시 → 여기선 무드·프레이밍만 (중복 제거)
         # 디테일 컷(macro)을 빼면 키보드 전체가 잘리지 않고 프레임 안에 다 들어오도록 강제(부분 크롭은 디테일 컷 몫).
@@ -3068,6 +3076,18 @@ def _setup_glb_path(payload: dict) -> Path | None:
     return candidate if candidate.exists() else None
 
 
+# depth는 셋업 GLB(세워진 모니터 포함 3D 데스크)를 3/4-위에서 렌더한다 → 원근 데스크
+# 씬(hero/eye-level/wide=desk·room)엔 맞지만 flat-lay(top_down: 오버헤드·모니터 없음)·
+# macro(키캡 클로즈업)엔 카메라가 프롬프트와 충돌한다. 그런 컷은 ControlNet을 끄고 기존
+# img2img(top_down은 전용 구도 맵 보유)로 폴백한다.
+_CONTROLNET_SHOT_SCENES = {"desk", "room"}
+
+
+def _controlnet_appropriate_shot(payload: dict) -> bool:
+    template = _COMPOSITION_TEMPLATES.get(_resolve_shot_type(payload))
+    return bool(template) and template.get("scene") in _CONTROLNET_SHOT_SCENES
+
+
 def _candidate_workflow_names(payload: dict) -> list[str]:
     """Ordered workflow-name candidates: explicit > situational > default.
 
@@ -3084,13 +3104,14 @@ def _candidate_workflow_names(payload: dict) -> list[str]:
     # 선행 후보로 넣는다. txt2img 계열이 먼저 잡히면 {reference_image_name} 치환이
     # 일어나지 않아 레퍼런스가 통째로 무시된다(QA 2026-06-10 #1).
     if _reference_image_b64(payload):
-        # ControlNet(depth) 활성 + 셋업 구도 레퍼런스 + GLB 해석 가능이면 depth 워크플로를
-        # img2img보다 우선한다. 평면 raster img2img로는 "사진+정확 배열"을 동시에 못 얻어
-        # (2026-06-16 denoise A/B), GLB depth로 배열을 denoise와 독립적으로 고정한다.
-        # 비활성/GLB 누락이면 기존 flux_img2img로 자연 폴백.
+        # ControlNet(depth) 활성 + 셋업 구도 레퍼런스 + 원근 데스크 컷 + GLB 해석 가능이면
+        # depth 워크플로를 img2img보다 우선한다. 평면 raster img2img로는 "사진+정확 배열"을
+        # 동시에 못 얻어(2026-06-16 denoise A/B), GLB depth로 배열을 denoise와 독립적으로
+        # 고정한다. 비활성/부적합 컷(flat-lay·macro)/GLB 누락이면 기존 flux_img2img로 폴백.
         if (
             payload.get("reference_is_composition")
             and _controlnet_enabled(settings)
+            and _controlnet_appropriate_shot(payload)
             and _setup_glb_path(payload) is not None
         ):
             names.append("flux_controlnet_depth")
