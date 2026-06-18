@@ -2,6 +2,11 @@
 
 AI 기반 소상공인 커스텀 키보드/데스크테리어 광고 콘텐츠 생성 프로젝트입니다.
 
+## 주요 링크
+
+- [프로젝트 Notion 문서](https://app.notion.com/p/1-3247356fc5cb838d8b2f81a394c272ec?source=copy_link)
+- [프로젝트 보고서](https://drive.google.com/file/d/1IRVdIwdeGntppYYNBey6jgla3PYNuOBN/view?usp=sharing)
+
 ## 프로젝트
 
 ### [deskad_keyboard_demo](./deskad_keyboard_demo/)
