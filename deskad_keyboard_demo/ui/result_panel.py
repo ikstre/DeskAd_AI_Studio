@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 import streamlit.components.v1 as components
 
-from ui_steps import render_step_input_panel
+from .steps import render_step_input_panel
 
 from .constants import IMAGE_JOB_TERMINAL_STATUSES, KEYBOARD_SIZE_INFO, MONITOR_SIZES, POSTER_TEMPLATE_LABELS, STEP_LABELS
 
@@ -122,7 +122,7 @@ def _render_poster_downloads(poster: dict, poster_svg: str) -> None:
         use_container_width=True,
     )
     try:
-        from ppt_export import build_poster_pptx
+        from .ppt_export import build_poster_pptx
         from .ad_content import current_product_export_payload
 
         pptx_data = build_poster_pptx(

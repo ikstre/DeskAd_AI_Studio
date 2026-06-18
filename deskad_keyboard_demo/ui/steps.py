@@ -6,8 +6,8 @@ from typing import Any
 
 import streamlit as st
 
-from ui.constants import IMAGE_JOB_TERMINAL_STATUSES
-from ui.state import PRODUCT_FIELD_ERROR_KEY, missing_product_fields
+from .constants import IMAGE_JOB_TERMINAL_STATUSES
+from .state import PRODUCT_FIELD_ERROR_KEY, missing_product_fields
 
 
 PRODUCT_TYPE_OPTIONS = ["커스텀 키보드", "키캡", "데스크매트", "데스크 조명", "모니터암", "데스크 소품", "번들 셋업"]
